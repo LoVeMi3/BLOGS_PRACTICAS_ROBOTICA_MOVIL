@@ -15,8 +15,8 @@
 	en las que ya había utilizado la misma lógica de limpiar una habitación, sobre todo
 	porque hicimos una práctica en grupo de un robot de servicios de un hotel. Ya 
 	con la lógica del código en mente, lo que más sencillo que se me planteaba era un 
-	switch de estados dentro de un while. Todo esto dentro de la función exercise() dada 
-	por la plantilla.
+	switch (if/elif) de estados dentro de un while. Todo esto dentro de la función 
+	exercise() dada por la plantilla.
 	
 	El while en exercise es necesario para la recogida automática y continua de los 
 	180 valores del laser, comprobar que están todos y que no son nulos. Después de 
@@ -31,15 +31,15 @@
 	mínimo de detección de un obstáculo, la variable es true y empezamos la lógica 
 	del switch de estados.
 	
-	En el switch tenemos cuatro estados: SPIRAL, FORWARD, BACKUP, TURN. En el estado 
-	SPIRAL nos centramos en ir calculando, dependiendo del número de ticks que han 
-	pasado, el valor del radio que tiene que ir tomando la espiral a medida que aumentan 
-	los ticks. El estado FORWARD trata simplemente de que los motores vayan en línea 
-	recta hacia delante, y se cambia a él cuando ya han pasado suficientes ticks. 
-	Estos dos estados tienen en cuenta si se detecta un obstáculo y cambian al estado 
-	de BACKUP, dónde se elige de forma random en qué dirección gira luego el robot 
-	tras ir hacia atrás. Tras eso, se cambia al estado TURN, donde se gira y se vuelve 
-	a FORWARD.
+	En el switch (condicional) tenemos cuatro estados: SPIRAL, FORWARD, BACKUP, TURN. 
+	En el estado SPIRAL nos centramos en ir calculando, dependiendo del número de 
+	ticks que han pasado, el valor del radio que tiene que ir tomando la espiral a 
+	medida que aumentan los ticks. El estado FORWARD trata simplemente de que los 
+	motores vayan en línea recta hacia delante, y se cambia a él cuando ya han pasado 
+	suficientes ticks. Estos dos estados tienen en cuenta si se detecta un obstáculo 
+	y cambian al estado de BACKUP, dónde se elige de forma random en qué dirección 
+	gira luego el robot tras ir hacia atrás. Tras eso, se cambia al estado TURN, 
+	donde se gira y se vuelve a FORWARD.
 	
 	Dónde más dificulted encontré fue en la división de los grupos de visión del cono 
 	de los valores del láser, no sabía qué pasaba exactamente, hasta que me recomendaron 
