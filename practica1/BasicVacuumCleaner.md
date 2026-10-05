@@ -57,4 +57,5 @@
 	son más estrechas, entonces en la pantalla de arriba por eso se ve como que detecta 
 	una pared antes de acercarse a ella. Y pues, sinceramente, paré el video.
 
-	[![watch the video](https://github.com/LoVeMi3/BLOGS_PRACTICAS_ROBOTICA_MOVIL/edit/main/practica1/BasicVacuumCleaner)(https://youtu.be/el7jMzhjojQ)
+	El vídeo
+	(https://youtu.be/el7jMzhjojQ)
