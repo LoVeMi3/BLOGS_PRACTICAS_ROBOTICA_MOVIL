@@ -1,1 +1,62 @@
 # BLOGS_PRACTICAS_ROBOTICA_MOVIL
+
+
+	## BASIC VACUUM CLEANER
+	
+	Esta primera práctica se trataba de programar una aspiradora pseudoautónoma, que
+	recorrería una habitación o casa hasta llegar al 100%. Se trataría de seguir
+	un movimiento en espiral para cubrir la mayor superficie posible, teniendo en 
+	cuenta los obstáculos que la aspiradora pudiese encontrar, como paredes o mesas.
+	La dirección de los giros que haría la aspiradora se decidiría de forma aleatoria, 
+	estos causados por un obstáculo detectado.
+	El objetivo es recorrer, "limpiar", el 100% de la habitación o casa, sin depender 
+	de qué mapa se utilice.
+	
+	El primer paso que realicé fue buscar código de mi propiedad, de otras prácticas 
+	en las que ya había utilizado la misma lógica de limpiar una habitación, sobre todo
+	porque hicimos una práctica en grupo de un robot de servicios de un hotel. Ya 
+	con la lógica del código en mente, lo que más sencillo que se me planteaba era un 
+	switch (if/elif) de estados dentro de un while. Todo esto dentro de la función 
+	exercise() dada por la plantilla.
+	
+	El while en exercise es necesario para la recogida automática y continua de los 
+	180 valores del laser, comprobar que están todos y que no son nulos. Después de 
+	eso, hay que dividir el cono de visión del laser en tres grupos: el centro, la 
+	derecha y la izquierda, siendo estos los que señalan si se detecta un obstáculo 
+	en cualquiera de las tres direcciones. Este cono de visión lo podemos definir en 
+	aproximación sabiendo que el valor del centro es 90, pero a la hora de definir 
+	los valores "límites" que definirían los tres grupos, tuve que aumentar de 75 a 
+	60 y de 105 a 120 (los originales) porque se me quedaba en un campo de visión 
+	corto que hacía que el robot se quedara enganchado en paredes que tenía detrás. 
+	Después, si cualquiera de los valores de estas direcciones está por debajo del 
+	mínimo de detección de un obstáculo, la variable es true y empezamos la lógica 
+	del switch de estados.
+	
+	En el switch (condicional) tenemos cuatro estados: SPIRAL, FORWARD, BACKUP, TURN. 
+	En el estado SPIRAL nos centramos en ir calculando, dependiendo del número de 
+	ticks que han pasado, el valor del radio que tiene que ir tomando la espiral a 
+	medida que aumentan los ticks. El estado FORWARD trata simplemente de que los 
+	motores vayan en línea recta hacia delante, y se cambia a él cuando ya han pasado 
+	suficientes ticks. Estos dos estados tienen en cuenta si se detecta un obstáculo 
+	y cambian al estado de BACKUP, dónde se elige de forma random en qué dirección 
+	gira luego el robot tras ir hacia atrás. Tras eso, se cambia al estado TURN, 
+	donde se gira y se vuelve a FORWARD.
+	
+	Dónde más dificulted encontré fue en la división de los grupos de visión del cono 
+	de los valores del láser, no sabía qué pasaba exactamente, hasta que me recomendaron 
+	aumentar el rango de los valores. Lo que también me costó fueron los ticks, no 
+	sabía que los necesitaba, y no caía que me hacían falta para resolver el hecho 
+	de que el robot en un punto se quedaba haciendo el mismo recorrido de la habitación 
+	y no recorría el resto de la habitación, se quedaba siguiendo la pared. Llegaba 
+	su límite de aumento del radio de la espiral, encontraba todo el rato el mismo 
+	obstáculo que era la pared, y se quedaba ahí. Los ticks completaban la lógica 
+	de que girara de forma random al detectar un obstáculo.
+
+	Para finalizar, el vídeo original me ha dorado 100 minutos, cuando llegué a esa 
+	marca lo paré aun cuando sólo estaba al 84% porque me dí cuenta que el mapa que 
+	estaba percibiendo el robot era el de la pantalla de en medio, dónde las habitaciones 
+	son más estrechas, entonces en la pantalla de arriba por eso se ve como que detecta 
+	una pared antes de acercarse a ella. Y pues, sinceramente, paré el video.
+
+	El vídeo
+	(https://youtu.be/el7jMzhjojQ)
