@@ -50,3 +50,11 @@
 	su límite de aumento del radio de la espiral, encontraba todo el rato el mismo 
 	obstáculo que era la pared, y se quedaba ahí. Los ticks completaban la lógica 
 	de que girara de forma random al detectar un obstáculo.
+
+	Para finalizar, el vídeo original me ha dorado 100 minutos, cuando llegué a esa 
+	marca lo paré aun cuando sólo estaba al 84% porque me dí cuenta que el mapa que 
+	estaba percibiendo el robot era el de la pantalla de en medio, dónde las habitaciones 
+	son más estrechas, entonces en la pantalla de arriba por eso se ve como que detecta 
+	una pared antes de acercarse a ella. Y pues, sinceramente, paré el video.
+
+	[![watch the video](https://github.com/LoVeMi3/BLOGS_PRACTICAS_ROBOTICA_MOVIL/edit/main/practica1/BasicVacuumCleaner)(https://youtu.be/el7jMzhjojQ)
