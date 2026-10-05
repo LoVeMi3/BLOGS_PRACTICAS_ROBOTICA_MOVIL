@@ -59,4 +59,5 @@ son más estrechas, entonces en la pantalla de arriba por eso se ve como que det
 una pared antes de acercarse a ella. Y pues, sinceramente, paré el video.
 
 El vídeo
-[![watch the video]https://github.com/LoVeMi3/BLOGS_PRACTICAS_ROBOTICA_MOVIL/tree/main/practica1](https://youtu.be/el7jMzhjojQ)
+
+(https://youtu.be/el7jMzhjojQ)
