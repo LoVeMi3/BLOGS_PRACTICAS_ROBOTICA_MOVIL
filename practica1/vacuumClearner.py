@@ -35,9 +35,9 @@ while True:
         continue
 
     # Distancias mínimas por zonas
-    center = min(rd(laser, i) for i in range(60, 121))   # ±30º frontal
-    sideL = min(rd(laser, i) for i in range(140, 180))   # lado izquierdo
-    sideR = min(rd(laser, i) for i in range(0, 40))      # lado derecho
+    center = min(rd(laser, i) for i in range(60, 121)) # ±30º frontal
+    sideL = min(rd(laser, i) for i in range(140, 180)) # lado izquierdo
+    sideR = min(rd(laser, i) for i in range(0, 40)) # lado derecho
 
     # Suma de distancias para decidir hacia dónde girar
     left = sum(rd(laser, i) for i in range(135, 180))
@@ -46,15 +46,15 @@ while True:
     obst = center < 0.40 or sideL < 0.22 or sideR < 0.22
 
     if state == SPIRAL:
-        v = 0.3                        # velocidad lineal
-        r = 0.4 + 0.004 * ticks        # radio creciente con el tiempo
+        v = 0.3 # velocidad lineal
+        r = 0.4 + 0.004 * ticks # radio creciente con el tiempo
         HAL.setV(v)
-        HAL.setW(v / r)                # velocidad angular
+        HAL.setW(v / r) # velocidad angular
         ticks += 1
         if obst:
             ticks = 0
             state = BACKUP
-        elif ticks > 400:              # radio muy grande -> recto
+        elif ticks > 400: # radio muy grande -> recto
             ticks = 0
             state = FORWARD
 
