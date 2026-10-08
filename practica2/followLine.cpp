@@ -9,10 +9,10 @@ Si está en curva que la veloidad disminuya
 Si está en recta que aumente la velocidad
 Tener unos parámetros de velocidad para curva y otros para recta
 */
-const int V_BASE = 0.5;
-const int V_TURN = 0.3;
-const int V_SEARCH = 0.4;
-const int V_BACK = 0.3;
+const int V_BASE = 7;
+const int V_TURN = 5;
+const int V_SEARCH = 6;
+const int V_BACK = 5;
 
 //estado de carrera
 volatile bool lapStarted = false;
