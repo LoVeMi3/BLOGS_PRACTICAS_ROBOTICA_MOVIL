@@ -17,7 +17,7 @@ V_TURN = 10
 V_SEARCH = 8
 W_SEARCH = 8
 V_BACK = 7
-KP, KD = 1.2, 0.4 #KD a 0 para empezar
+KP, KD = 1.2, 0.4 #KD a 0 para empezar, ir aumentando
 MIN_AREA = 200 #área mínima en la que damos la línea por localizada
 TURN_THRESHOLD = 0.4 #a partir del que consideramos curva
 
