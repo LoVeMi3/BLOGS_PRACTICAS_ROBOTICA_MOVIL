@@ -50,7 +50,7 @@ de cabeza. Y esta vez lo he hecho sólo en python, porque si no, no entendía el
 de RGB a HSV. Siento que la conclusión sea yo quejándome, pero de verdad que lo 
 he intentado con las K's.
 
-https://youtu.be/7Dr84OfwMbI simple
-https://youtu.be/bnBYwmm2mJw montmelo
-https://youtu.be/27uhqMzVJXM montreal
-https://youtu.be/JlvWDe4Aaug nurtburing
+(https://youtu.be/7Dr84OfwMbI) simple
+(https://youtu.be/bnBYwmm2mJw) montmelo
+(https://youtu.be/27uhqMzVJXM)montreal
+(https://youtu.be/JlvWDe4Aaug) nurtburing
