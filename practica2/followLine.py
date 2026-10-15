@@ -12,14 +12,21 @@ FOLLOW, LOST = range(2)
 
 IDEAL_RATE = 50
 
-V_STRAIGHT = 19
-V_TURN = 5xd
+V_STRAIGHT = 20.8
+V_TURN = 5.3
 V_SEARCH = 6
-W_SEARCH = 3.5
-#V_BACK = 9
-KP, KD = 1.0, 0.4 #KD a 0 para empezar, ir aumentando
-MIN_AREA = 80 #área mínima en la que damos la línea por localizada
-TURN_THRESHOLD = 0.35 #a partir del que consideramos curva #0.4
+W_SEARCH = 3
+
+KP, KD = 1.3, 0.5 
+KP_FAST, KD_FAST = 0.3, 0.2 #0.5, 0.8
+
+ACCEL = 0.3
+MIN_AREA = 50 #80  #área mínima en la que damos la línea por localizada
+ALPHA = 0.8 #0.6 # suavizado de la salida, más alto = más reactivo
+SLOW_ALPHA = 0.04 # media lenta, cuanto más bajo, más lenta
+SLOW_LO, SLOW_HI = 0.4, 0.7 # err_slow: por debajo, velocidad máxima; por encima, V_TURN
+FAST_LO, FAST_HI = 0.5, 0.7 # error instantáneo: seguridad para curvas cerradas
+err_slow = 0.0 # global, fuera del bucle
 
 T_HOLD = 0.2 # tiempo que mantenemos la última orden antes de buscar #0.1
 
@@ -30,15 +37,18 @@ last_w = 0.0
 last_v = V_TURN
 lost_time = 0.0
 w_filt = 0.0
-ALPHA = 0.6 # suavizado de la salida (0..1, más alto = más reactivo)
+
+#reducción de la velocidad al tomar una curva dependiendo de cuanto aumente el error
+def ramp(x, lo, hi):
+	return min(max((x - lo) / (hi - lo), 0.0), 1.0)
 
 def get_line_error(img):
 	"""Devuelve error en [-1, 1] o None si no ve la línea."""
 	#RGB2HSV no es el correcto para este simulador
 	hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 	height, width = hsv.shape[:2]
-	#recortamos la imagen, para que sólo detecte la parte inferior de esta, la línea, 60%
-	img_inf = hsv[int(height*0.4):, :] #líneas y columnas
+	#recortamos la imagen, para que sólo detecte la parte inferior de esta, la línea, 40%
+	img_inf = hsv[int(height*0.6):, :] #líneas y columnas
 
 	#rojo, nos movemos en dos rangos
 	m1 = cv2.inRange(img_inf, (0, 100, 100), (10, 255, 255))
@@ -66,15 +76,27 @@ while True:
 
 	if error is not None:
 		"""Línea visible"""
+		if state == LOST: # línea recién recuperada
+			prev_error = error # evita el pico de D
+			w_filt = last_w
 		state = FOLLOW
 
-		w_cmd = -(KP * error + KD * (error - prev_error))
+		err_slow = SLOW_ALPHA * error + (1 - SLOW_ALPHA) * err_slow
+		k = max(ramp(abs(err_slow), SLOW_LO, SLOW_HI), ramp(abs(error), FAST_LO, FAST_HI))
+		v_target = V_STRAIGHT - (V_STRAIGHT - V_TURN) * k
+		v = min(v_target, last_v + ACCEL)
+
+		s = 1.0 - k # 1 = velocidad máxima, 0 = V_TURN
+		big = ramp(abs(error), 0.5, 0.75) # error grande -> ganancia de curva ya
+		s = s * (1.0 - big)
+		kp = KP + (KP_FAST - KP) * s
+		kd = KD + (KD_FAST - KD) * s
+
+		w_cmd = -(kp * error + kd * (error - prev_error))
 		w_filt = ALPHA * w_cmd + (1 - ALPHA) * w_filt # suavizado
-		if abs(error) > TURN_THRESHOLD:
-			v = V_TURN
-		else:
-			v = V_STRAIGHT
-			
+		
+		print(f"err={error:.2f} slow={err_slow:.2f} k={k:.2f} v={v:.1f} w={w_filt:.2f}")
+
 		HAL.setV(v)
 		HAL.setW(w_filt)
 
@@ -91,8 +113,10 @@ while True:
 		if state == FOLLOW:
 			state = LOST
 			lost_time = time.time()
+			print("LOST! last_w=%.2f last_dir=%d" % (last_w, last_dir))
 		
 		t = time.time() - lost_time
+		last_v = V_SEARCH
 		if t < T_HOLD:
  			# tiempo corto, seguimos con la última orden, sin frenar
 			HAL.setV(V_SEARCH)
@@ -101,3 +125,4 @@ while True:
 			# modo búsqueda, girar hacia donde la vimos por última vez
 			HAL.setV(V_SEARCH)
 			HAL.setW(-W_SEARCH * last_dir)
+			
