@@ -12,30 +12,33 @@ FOLLOW, LOST = range(2)
 
 IDEAL_RATE = 50
 
-V_STRAIGHT = 14
-V_TURN = 10
-V_SEARCH = 8
-W_SEARCH = 8
-V_BACK = 7
-KP, KD = 1.2, 0.4 #KD a 0 para empezar, ir aumentando
-MIN_AREA = 200 #área mínima en la que damos la línea por localizada
-TURN_THRESHOLD = 0.4 #a partir del que consideramos curva
+V_STRAIGHT = 19
+V_TURN = 5xd
+V_SEARCH = 6
+W_SEARCH = 3.5
+#V_BACK = 9
+KP, KD = 1.0, 0.4 #KD a 0 para empezar, ir aumentando
+MIN_AREA = 80 #área mínima en la que damos la línea por localizada
+TURN_THRESHOLD = 0.35 #a partir del que consideramos curva #0.4
 
-T_PAUSE = 0.2
-T_BACK = 0.7
+T_HOLD = 0.2 # tiempo que mantenemos la última orden antes de buscar #0.1
 
 state = FOLLOW
 prev_error = 0.0
 last_dir = 1 # +1 izquierda, -1 derecha
+last_w = 0.0
+last_v = V_TURN
 lost_time = 0.0
+w_filt = 0.0
+ALPHA = 0.6 # suavizado de la salida (0..1, más alto = más reactivo)
 
 def get_line_error(img):
 	"""Devuelve error en [-1, 1] o None si no ve la línea."""
 	#RGB2HSV no es el correcto para este simulador
 	hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 	height, width = hsv.shape[:2]
-	#recortamos la imagen, para que sólo detecte la parte inferior de esta, la línea, 45%
-	img_inf = hsv[int(height*0.55):, :] #líneas y columnas
+	#recortamos la imagen, para que sólo detecte la parte inferior de esta, la línea, 60%
+	img_inf = hsv[int(height*0.4):, :] #líneas y columnas
 
 	#rojo, nos movemos en dos rangos
 	m1 = cv2.inRange(img_inf, (0, 100, 100), (10, 255, 255))
@@ -48,18 +51,6 @@ def get_line_error(img):
 	cx = M["m10"] / M["m00"]
 	sol_cx = (cx - width / 2) / (width / 2)
 	return sol_cx, mask
-
-def search_line(t):
-	"""Comportamiento de búsqueda según los segundos t desde que se perdió la línea."""
-	if t < T_PAUSE:
-		HAL.setV(0)
-		HAL.setW(0)
-	elif t < T_BACK:
-		HAL.setV(-V_BACK)
-		HAL.setW(0)
-	else:
-		HAL.setV(V_SEARCH)
-		HAL.setW(W_SEARCH * last_dir)
 
 while True:
 	Frequency.tick(IDEAL_RATE)
@@ -75,24 +66,25 @@ while True:
 
 	if error is not None:
 		"""Línea visible"""
-		if state == LOST:
-			state = FOLLOW
-			prev_error = error
+		state = FOLLOW
 
-		w = -(KP * error + KD * (error - prev_error))
+		w_cmd = -(KP * error + KD * (error - prev_error))
+		w_filt = ALPHA * w_cmd + (1 - ALPHA) * w_filt # suavizado
 		if abs(error) > TURN_THRESHOLD:
 			v = V_TURN
 		else:
 			v = V_STRAIGHT
 			
 		HAL.setV(v)
-		HAL.setW(w)
+		HAL.setW(w_filt)
 
+		last_v, last_w = v, w_filt
 		prev_error = error
-		if error < 0:
-			last_dir = -1
-		else:
-			last_dir = 1
+		if abs(error) > 0.15:
+			if error < 0:
+				last_dir = -1
+			else:
+				last_dir = 1
 
 	else:
 		"""Línea no visible"""
@@ -100,4 +92,12 @@ while True:
 			state = LOST
 			lost_time = time.time()
 		
-		search_line(time.time() - lost_time)
+		t = time.time() - lost_time
+		if t < T_HOLD:
+ 			# tiempo corto, seguimos con la última orden, sin frenar
+			HAL.setV(V_SEARCH)
+			HAL.setW(-max(abs(last_w), W_SEARCH) * last_dir)
+		else:
+			# modo búsqueda, girar hacia donde la vimos por última vez
+			HAL.setV(V_SEARCH)
+			HAL.setW(-W_SEARCH * last_dir)
