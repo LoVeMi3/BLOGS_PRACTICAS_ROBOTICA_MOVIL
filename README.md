@@ -61,3 +61,68 @@ una pared antes de acercarse a ella. Y pues, sinceramente, paré el video.
 El vídeo
 
 (https://youtu.be/el7jMzhjojQ)
+
+
+## FOLLOW LINE
+
+En esta segunda práctica, de lo que se trataba era de hacer un siguelíneas pero 
+en formato de un coche de Fórmula 1, probándolo en distintos circuitos de Fórmula 
+1.
+
+Mi primer paso fue declarar las variables de las distintas velocidades para los 
+diferentes movimientos que podría hacer el coche: si busca la línea, si la sigue 
+de forma recta o si la sigue en una curva. También declaré los dos estados entre 
+los que se mueve el robot, las varibles de tiempo, la de error y la de la última 
+dirección; siendo estás globales y claves para la lógica del siguelíneas.
+
+La lógica que tenía en mente que siguiera el siguelíneas era básicamente dependiente 
+de si se veía la línea o no. Cuando la línea fuera visible, el coche determinaría 
+a partir del error en la imagen si nos encontrábamos en una curva o no. Esto también 
+dependía del threshold que declararíamos como mínimo para si lo que era detectado 
+era una curva o una recta. Por otro lado, cuando la línea no fuera visible, cuando 
+el error fuera None, empezaríamos un "timer" antes de ejecutar la función de búsqueda 
+de la línea, que iría contando los segundos desde que se ha perdido la línea y, 
+dependiendo de ese tiempo, buscaría la línea de una forma u otra.
+
+Sinceramente, lo que más se me hizo complicado al principio fue el paso de RGB a 
+HSV porque, genuinamente, no entendía cómo funcionaba la sintaxis del cv2. Con 
+ayuda de la página web que ustedes enseñaron y el comentario de los valores de RGB 
+entre los que se movía el rojo, entendí cómo funcionaba. Modifiqué la imagen que 
+captaría y utilizaría el coche; recorté la imagen al 40% de la parte inferior 
+(dónde se encontraría la línea), y como sólo tenía en cuenta el color rojo, en la 
+pantalla se ve la línea en blanco y todo lo demás (que no es rojo) se ve en negro. 
+El contraste es clave para encontrar la línea siempre.
+
+Para finalizar, estuve jugando con los valores de las velocidades de giro y de 
+línea recta. Me fijé que si había mucha distancia entre ambos valores, después de 
+hacer un giro (cerrado o no), al volver a la línea recta, al coche le costaba mucho 
+estabilizarse otra vez, sin oscilaciones. Si aumento la velocidad en línea recta, 
+tengo que tener cuidado aumentando también la velocidad en curvas.
+Bueno, esta parte es realmente la más complicada de toda la práctica. Todas las 
+variables que hay que tener en cuenta, los cálculos, el manejo de las oscilaciones 
+dependiendo de cuánto aumentes la velocidad en línea recta, el tener cuidado con 
+aumentar la velocidad de curva porque de repente te das con la pared de la simulación. 
+Ha sido un poco pesadilla, sobre todo cuando tenemos en cuenta que tienes dos 
+velocidades distintas pero un sólo error, y tienes que tener en cuenta las K's 
+distintas, la última dirección y la última curva en la que estabas. Y cuidado 
+con el área de la imagen que estás teniendo en cuenta, porque a veces ve la siguiente 
+curva que hay delante y se adelanta a ésta.
+
+En conclusión, los siguelíneas no son lo mío. No hay año en esta carrera que no 
+lo pase mal con un siguelíneas, y mira que es de las prácticas más sencilla. Pero 
+es que son los PID's. Y el error. Sumándole las distintas velocidades, mucho dolor 
+de cabeza. Y esta vez lo he hecho sólo en python, porque si no, no entendía el paso 
+de RGB a HSV. Siento que la conclusión sea yo quejándome, pero de verdad que lo 
+he intentado con las K's.
+
+El vídeo del circuito simple
+(https://youtu.be/7Dr84OfwMbI)
+
+El video del circuito de Montmelo
+(https://youtu.be/bnBYwmm2mJw)
+
+El video del circuito de Montreal
+(https://youtu.be/27uhqMzVJXM)
+
+El video del circuito de Nurtburing
+(https://youtu.be/JlvWDe4Aaug)
