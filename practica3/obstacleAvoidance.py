@@ -6,6 +6,7 @@ import numpy as np
 import argparse
 import cv2
 import time
+import math
 
 # Estados
 FOLLOW, LOST = range(2)
@@ -32,11 +33,19 @@ T_HOLD = 0.2 # tiempo que mantenemos la última orden antes de buscar #0.1
 
 state = FOLLOW
 prev_error = 0.0
-last_dir = 1 # +1 izquierda, -1 derecha
+last_dir = 1 # 1 izquierda, -1 derecha
 last_w = 0.0
 last_v = V_TURN
 lost_time = 0.0
 w_filt = 0.0
+
+k_att_lat=1.0 # ganancia lateral del vector de atracción (siguelíneas)
+k_rep=1.0 # ganancia del vector de repulsión
+d_influence=1.0 # distancia a partir de la cual el obstáculo repele (tu 1.0 m)
+d_min=0.05 # evita dividir por cero si el obstáculo está pegado
+v_max=0.5 # velocidad lineal máxima
+w_max=1.0 # velocidad angular máxima
+k_ang=1.5 # ganancia del ángulo del vector resultante -> velocidad angular
 
 #reducción de la velocidad al tomar una curva dependiendo de cuanto aumente el error
 def ramp(x, lo, hi):
@@ -63,28 +72,84 @@ def get_line_error(img):
 	return sol_cx, mask
 
 def obstacle_detection():
-    laser = HAL.getLaserData()
+	laser = HAL.getLaserData()
 
-    # Comprobando si los datos son válidos; si no, al siguiente ciclo
-    if laser is None or len(laser.values) < 180:
-        HAL.setV(0.0)
-        HAL.setW(0.0)
-        continue
+	# Comprobando si los datos son válidos; si no, al siguiente ciclo
+	if laser is None or len(laser.values) < 180:
+		HAL.setV(0.0)
+		HAL.setW(0.0)
+		continue
 
-    # Distancias mínimas por zonas
-    center = min(rd(laser, i) for i in range(60, 121)) # ±30º frontal
-    sideL = min(rd(laser, i) for i in range(140, 180)) # lado izquierdo
-    sideR = min(rd(laser, i) for i in range(0, 40)) # lado derecho
+	# Distancias mínimas por zonas
+	center = min(rd(laser, i) for i in range(60, 121)) # ±30º frontal
+	sideL = min(rd(laser, i) for i in range(140, 180)) # lado izquierdo
+	sideR = min(rd(laser, i) for i in range(0, 40)) # lado derecho
 
-    # Suma de distancias para decidir hacia dónde girar
-    left = sum(rd(laser, i) for i in range(135, 180))
-    right = sum(rd(laser, i) for i in range(0, 45))
+ 	# Suma de distancias para decidir hacia dónde girar
+	left = sum(rd(laser, i) for i in range(135, 180))
+	right = sum(rd(laser, i) for i in range(0, 45))
 
-    obst = center < 0.40 or sideL < 0.22 or sideR < 0.22
+	obst = center < 0.40 or sideL < 0.22 or sideR < 0.22
 
-    #SACAR DE ESTA FUNCIÓN EL VALOR DEL VECTOR DE REPULSIÓN PARA SACAR ANGLE
+ 	#SACAR DE ESTA FUNCIÓN EL VALOR DEL VECTOR DE REPULSIÓN PARA SACAR ANGLE
 
-    return obst
+	return obst
+
+import math
+
+
+def potential_field_cmd(line_error, obstacle=None):
+	"""
+	Combina atracción (siguelíneas) y repulsión (obstáculo) y devuelve (v_lin, w_ang).
+
+	Sistema de referencia del robot (base_link): x hacia delante, y hacia la izquierda.
+
+	line_error : error lateral de la línea. Positivo = línea a la IZQUIERDA del robot (si tu siguelíneas usa el signo contrario, cámbialo aquí: -line_error). Idealmente normalizado en [-1, 1]. obstacle: (x, y) del obstáculo más cercano en base_link, o None si no hay.
+	"""
+	# Vector de atracción: siempre hacia delante + corrección lateral hacia la línea
+	att_x = 1.0
+	att_y = k_att_lat * line_error
+
+	# Vector de repulsión: apunta en sentido opuesto al obstáculo
+	rep_x, rep_y = 0.0, 0.0
+	if obstacle is not None:
+		ox, oy = obstacle
+		d = math.hypot(ox, oy)
+
+		if d < d_influence:
+			d = max(d, d_min)
+			# Módulo clásico de campos potenciales: crece al acercarse, 0 en d_influence
+			mag = min(k_rep * (1.0 / d - 1.0 / d_influence), 5.0)
+
+			# Dirección: del obstáculo hacia el robot
+			rep_x = mag * (-ox / d)
+			rep_y = mag * (-oy / d)
+
+			# Si el obstáculo está justo delante (oy ~ 0) el empuje lateral es nulo
+			# y el robot se queda atascado: se rompe la simetría girando a un lado.
+			if ox > 0.0 and abs(oy) < 0.05:
+				rep_y += mag * 0.5
+
+	# Suma de vectores
+	total_x = att_x + rep_x
+	total_y = att_y + rep_y
+
+	# Vector resultante -> velocidades
+	angle = math.atan2(total_y, total_x) # hacia dónde quiere ir el robot
+
+	w = max(-w_max, min(w_max, k_ang * angle))
+
+	# Avanza más cuanto más alineado esté con el vector resultante; nunca marcha atrás
+	v = v_max * max(0.0, math.cos(angle)) * min(1.0, math.hypot(total_x, total_y))
+	v = max(0.0, min(v_max, v))
+
+	return v, w
+
+# Ejemplo de uso en callback/timer:
+#	obstacle = (obs_x, obs_y) if hay_obstaculo else None
+#	v, w = potential_field_cmd(line_error, obstacle)
+#	twist.linear.x = v
+#	twist.angular.z = w
 
 while True:
 	Frequency.tick(IDEAL_RATE)
@@ -121,9 +186,9 @@ while True:
 		
 		print(f"err={error:.2f} slow={err_slow:.2f} k={k:.2f} v={v:.1f} w={w_filt:.2f}")
 
-        #DETECCIÓN DEL OBSTÁCULO, FUNCIÓN QUE SE ACTIVE SEGÚN SE DETECTE UN OBSTÁCULO
+		#DETECCIÓN DEL OBSTÁCULO, FUNCIÓN QUE SE ACTIVE SEGÚN SE DETECTE UN OBSTÁCULO
 
-        #las variables V y W las sacamos de la función de dete4cción del obstáculo
+		#las variables V y W las sacamos de la función de dete4cción del obstáculo
 		HAL.setV(v)
 		HAL.setW(w_filt)
 
