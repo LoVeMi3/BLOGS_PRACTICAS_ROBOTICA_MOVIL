@@ -90,9 +90,6 @@ def obstacle_detection():
 	right = sum(rd(laser, i) for i in range(0, 45))
 
 	obst = center < 0.40 or sideL < 0.22 or sideR < 0.22
-
- 	#SACAR DE ESTA FUNCIÓN EL VALOR DEL VECTOR DE REPULSIÓN PARA SACAR ANGLE
-
 	return obst
 
 import math
@@ -100,11 +97,9 @@ import math
 
 def potential_field_cmd(line_error, obstacle=None):
 	"""
-	Combina atracción (siguelíneas) y repulsión (obstáculo) y devuelve (v_lin, w_ang).
-
-	Sistema de referencia del robot (base_link): x hacia delante, y hacia la izquierda.
-
-	line_error : error lateral de la línea. Positivo = línea a la IZQUIERDA del robot (si tu siguelíneas usa el signo contrario, cámbialo aquí: -line_error). Idealmente normalizado en [-1, 1]. obstacle: (x, y) del obstáculo más cercano en base_link, o None si no hay.
+	Combina atracción (siguelíneas) y repulsión (obstáculo) y devuelve (v_lin, 
+	line_error : error lateral de la línea.
+	obstacle: (x, y) del obstáculo más cercano en base_link, o None si no hay.
 	"""
 	# Vector de atracción: siempre hacia delante + corrección lateral hacia la línea
 	att_x = 1.0
@@ -118,15 +113,15 @@ def potential_field_cmd(line_error, obstacle=None):
 
 		if d < d_influence:
 			d = max(d, d_min)
-			# Módulo clásico de campos potenciales: crece al acercarse, 0 en d_influence
+			#crece al acercarse, 0 en d_influence
 			mag = min(k_rep * (1.0 / d - 1.0 / d_influence), 5.0)
 
-			# Dirección: del obstáculo hacia el robot
+			#del obstáculo hacia el robot
 			rep_x = mag * (-ox / d)
 			rep_y = mag * (-oy / d)
 
-			# Si el obstáculo está justo delante (oy ~ 0) el empuje lateral es nulo
-			# y el robot se queda atascado: se rompe la simetría girando a un lado.
+			#Si el obstáculo está justo delante, el empuje lateral es nulo
+			# y el robot se queda atascado, se rompe la simetría girando a un lado.
 			if ox > 0.0 and abs(oy) < 0.05:
 				rep_y += mag * 0.5
 
@@ -137,19 +132,33 @@ def potential_field_cmd(line_error, obstacle=None):
 	# Vector resultante -> velocidades
 	angle = math.atan2(total_y, total_x) # hacia dónde quiere ir el robot
 
+	err_slow = SLOW_ALPHA * line_error + (1 - SLOW_ALPHA) * err_slow
+	k = max(ramp(abs(err_slow), SLOW_LO, SLOW_HI), ramp(abs(line_error), FAST_LO, FAST_HI))
+	v_target = V_STRAIGHT - (V_STRAIGHT - V_TURN) * k
+	v = min(v_target, last_v + ACCEL)
+
+	s = 1.0 - k # 1 = velocidad máxima, 0 = V_TURN
+	big = ramp(abs(line_error), 0.5, 0.75) # error grande -> ganancia de curva ya
+	s = s * (1.0 - big)
+	kp = KP + (KP_FAST - KP) * s
+	kd = KD + (KD_FAST - KD) * s
+
+	w_cmd = -(kp * line_error + kd * (line_error - prev_error))
+	w_filt = ALPHA * w_cmd + (1 - ALPHA) * w_filt # suavizado
+		
+	print(f"err={line_error:.2f} slow={err_slow:.2f} k={k:.2f} v={v:.1f} w={w_filt:.2f}")
+
+	"""
 	w = max(-w_max, min(w_max, k_ang * angle))
 
-	# Avanza más cuanto más alineado esté con el vector resultante; nunca marcha atrás
+	#avanza más cuanto más alineado esté con el vector resultante
 	v = v_max * max(0.0, math.cos(angle)) * min(1.0, math.hypot(total_x, total_y))
 	v = max(0.0, min(v_max, v))
+	"""
 
-	return v, w
+	return v, w_filt
 
-# Ejemplo de uso en callback/timer:
-#	obstacle = (obs_x, obs_y) if hay_obstaculo else None
-#	v, w = potential_field_cmd(line_error, obstacle)
-#	twist.linear.x = v
-#	twist.angular.z = w
+
 
 while True:
 	Frequency.tick(IDEAL_RATE)
@@ -170,29 +179,20 @@ while True:
 			w_filt = last_w
 		state = FOLLOW
 
-		err_slow = SLOW_ALPHA * error + (1 - SLOW_ALPHA) * err_slow
-		k = max(ramp(abs(err_slow), SLOW_LO, SLOW_HI), ramp(abs(error), FAST_LO, FAST_HI))
-		v_target = V_STRAIGHT - (V_STRAIGHT - V_TURN) * k
-		v = min(v_target, last_v + ACCEL)
-
-		s = 1.0 - k # 1 = velocidad máxima, 0 = V_TURN
-		big = ramp(abs(error), 0.5, 0.75) # error grande -> ganancia de curva ya
-		s = s * (1.0 - big)
-		kp = KP + (KP_FAST - KP) * s
-		kd = KD + (KD_FAST - KD) * s
-
-		w_cmd = -(kp * error + kd * (error - prev_error))
-		w_filt = ALPHA * w_cmd + (1 - ALPHA) * w_filt # suavizado
+		if obstacle_detection:
+			obstacle = (obs_x, obs_y)
+		else 
+			obstacle = None
 		
-		print(f"err={error:.2f} slow={err_slow:.2f} k={k:.2f} v={v:.1f} w={w_filt:.2f}")
+		v, w = potential_field_cmd(line_error, obstacle)
+		twist.linear.x = v
+		twist.angular.z = w
 
-		#DETECCIÓN DEL OBSTÁCULO, FUNCIÓN QUE SE ACTIVE SEGÚN SE DETECTE UN OBSTÁCULO
 
-		#las variables V y W las sacamos de la función de dete4cción del obstáculo
 		HAL.setV(v)
 		HAL.setW(w_filt)
 
-		last_v, last_w = v, w_filt
+		last_v, last_w = v, w
 		prev_error = error
 		if abs(error) > 0.15:
 			if error < 0:
