@@ -1,0 +1,16 @@
+Comentario de Claude, no nos engañemos
+
+Me alegra que funcione. No la necesitas porque obstacle_detection() y repulsion() hacían el mismo trabajo, pero de formas distintas.
+
+Tu versión original reducía todo el láser a un único obstáculo (el punto más cercano) y luego calculaba la repulsión solo con él. Eso obligaba a tener una función aparte para decidir cuál era el obstáculo y si “había obstáculo o no” (obst).
+
+La versión actual recorre las 180 lecturas y cada una aporta su pequeña repulsión, que es cero si está más lejos de d_influence. Así:
+
+No hace falta decidir si hay obstáculo: si no hay lecturas cerca, la suma da 0 y la repulsión desaparece sola.
+No hace falta elegir el más cercano: los puntos cercanos pesan mucho más gracias al factor 1/d², así que dominan de forma natural.
+Ves todos los obstáculos a la vez (una pared a un lado y una caja delante, por ejemplo), en vez de reaccionar solo a uno y oscilar cuando el “más cercano” cambia de un ciclo a otro.
+
+En resumen, el punto más cercano era una aproximación para simplificar; sumar todo el láser es el campo de potencial “de verdad”, y ahí la detección explícita sobra.
+
+
+Comentarios míos (i helped! i swear!) (embarrasing)
