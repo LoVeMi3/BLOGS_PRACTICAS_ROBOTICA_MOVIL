@@ -13,29 +13,10 @@ k_rep = 0.5 # ganancia del vector de repulsión
 k_ang = 1.5 # ganancia del ángulo del vector resultante -> velocidad angular
 k_tan = 1.5 # fuerza del empujón lateral al rodear
 
-d_influence = 2.5 # distancia a partir de la cual el obstáculo repele
+d_influence = 2.3 # distancia a partir de la cual el obstáculo repele
 d_min = 0.05 # evita dividir por cero si el obstáculo está pegado
 last_dir = 0.5 # +1 izquierda, -1 derecha
 REACHED_DIST = 1.0 #umbral pbjetivo alcanzado
-
-"""
-REP_ACTIVE = 0.02    # |rep| a partir del cual consideramos que hay obstáculo (ajustar)
-CONFLICT_COS = -0.5  # cos del ángulo att-rep por debajo del cual hay "bloqueo frontal"
-RELEASE_CYCLES = 25  # ciclos sin obstáculo para soltar el lado elegido (~0.5 s)
-SWITCH_COOLDOWN = 100  # ciclos mínimos antes de poder cambiar de lado (~2 s)
-MAX_RANGE = 5.0
-
-escape_dir = 0       # +1 = izquierda, -1 = derecha, 0 = libre
-free_cycles = 0
-since_switch = 0
-
-def side_clearance(laser):
-	#Espacio libre medio a la derecha (0-89) y a la izquierda (90-179).
-	vals = [clean(d) for d in laser.values[:180]]
-	right = sum(vals[0:90]) / 90.0
-	left = sum(vals[90:180]) / 90.0
-	return left, right
-	"""
 
 def repulsion(laser):
 	rx = 0
@@ -73,7 +54,6 @@ while True:
 	if math.hypot(dx, dy) < REACHED_DIST:
 		target.setReached(True)
 		target = WebGUI.getNextTarget()
-		"""escape_dir = 0"""
 		continue
 
 	#vector atractivo
@@ -85,49 +65,18 @@ while True:
 
 	#vector repulsión
 	rep_x, rep_y = repulsion(laser)
-	"""rep_norm = math.hypot(rep_x, rep_y)
-
-	# --- Decisión de lado ---
-	since_switch += 1
-	left_free, right_free = side_clearance(laser)
-
-	if rep_norm > REP_ACTIVE:
-		free_cycles = 0
-		cos_ar = (att_x * rep_x + att_y * rep_y) / rep_norm  # att ya está normalizado
-		blocked = cos_ar < CONFLICT_COS
-
-		if escape_dir == 0 and blocked:
-			# Elegimos el lado con más espacio; si hay empate, el que apunta al objetivo
-			if abs(left_free - right_free) > 0.2:
-				escape_dir = 1 if left_free > right_free else -1
-			else:
-				escape_dir = 1 if att_y >= 0 else -1
-			since_switch = 0
-
-		# Si el lado elegido se ha cerrado y el otro está claramente más libre, cambiamos
-		elif escape_dir != 0 and since_switch > SWITCH_COOLDOWN:
-			chosen = left_free if escape_dir == 1 else right_free
-			other = right_free if escape_dir == 1 else left_free
-			if chosen < 0.8 and other > chosen + 1.0:
-				escape_dir = -escape_dir
-				since_switch = 0
-	else:
-		free_cycles += 1
-		if free_cycles > RELEASE_CYCLES:
-			escape_dir = 0
-
-	# Componente lateral hacia el lado elegido (y > 0 = izquierda)
-	tan_y = escape_dir * k_tan * rep_norm """
 
 	total_x = att_x + rep_x
-	total_y = att_y + rep_y """+ tan_y """
+	total_y = att_y + rep_y
 
 	angle = math.atan2(total_y, total_x)
 	w = max(-V_TURN, min(V_TURN, k_ang * angle))
 	v = V_STRAIGHT * max(0.0, math.cos(angle)) #si va "de espaldas", v = 0
 
 	WebGUI.showForces([att_x, att_y], [rep_x, rep_y], [total_x, total_y])
+	WebGUI.showLocalTarget([total_x, total_y])
 	WebGUI.showLocalTarget([att_x, att_y])
 
 	HAL.setV(v)
 	HAL.setW(w * last_dir)
+
