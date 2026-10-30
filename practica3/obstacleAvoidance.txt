@@ -1,18 +1,20 @@
-Comentario de Claude, no nos engañemos
+## OBSTACLE AVOIDANCE
 
-Me alegra que funcione. No la necesitas porque obstacle_detection() y repulsion() hacían el mismo trabajo, pero de formas distintas.
+Esta práctica trataba del mismo coche de la anterior, que simplemente va haciendo el circuito pero guiándose siguiendo una lista de coordenadas objetivo, pasando el coche por cada uno. Estos "target", sus coordenadas funcionan como 
+vectores atractivos para el robot, mientras que los obstáculos que se van encontrando, y las paredes del circuito, funcionan commo vectores repulsivos. La suma de los vectores atractivos y repulsivos crean el vector resultante por el 
+que se guía el robot para continuar el circuito sin chocarse con los obstáculos.
 
-Tu versión original reducía todo el láser a un único obstáculo (el punto más cercano) y luego calculaba la repulsión solo con él. Eso obligaba a tener una función aparte para decidir cuál era el obstáculo y si “había obstáculo o no” (obst).
+En esta práctica, lo que más me ha costado al principio, ha sido entender el orden en el que tenía que coger los datos y las coordenadas. Al principio tenía el bucle principal para que lo primero que detectara fuera si había obstáculos, 
+entonces tenía una función que detectara los obstáculos, los esquivara y me devolviera las coordenadas del obstáculo. Pero necesitaba el vector de repulsión para crear el vector resultante, e hice una función que me 
+lo sacara. Y de 
+repente tenía dos funciones que hacían prácticamente lo mismo. Esto me pasa por coger mi código de Arquitectura Software. Bueno. Mezcle las dos funciones en una, que a partir de los datos del laser detectara si había un obstáculo, y sacar de ahí solamente el vector repulsivo. Me líe yo sola.
 
-La versión actual recorre las 180 lecturas y cada una aporta su pequeña repulsión, que es cero si está más lejos de d_influence. Así:
+Sorprendentement, ajustar la velocidad y la k del vector resultante fue más sencilla esta vez porque no buscaba mucha velocidad en los motores. Con lo que estuve jugando es con la distancia mínima a la que se detectaba un 
+obstáculo. Si era demasiada (2.5) y el robot se quedaba entre un coche y una pared, e intenta salir de ahí yendo hacia delante, se quedaba atascado y zigzagueando por los dos obstáculos a su alrededor. Entonces la reduje a 2.3.
+Sólo es un cambio significativo para mí, pero intenté de alguna forma que cuando detectara un obstáculo en vez de girarse siempre al mismo sitio, que girara a donde habría más hueco, por ejemplo con lo de multiplicar por -1 ó 1 
+a la velocidad angular. Pero no me salía, y simplemente reduje la distancia mínima, y funcionaba, así que \^·_·^/.
 
-No hace falta decidir si hay obstáculo: si no hay lecturas cerca, la suma da 0 y la repulsión desaparece sola.
-No hace falta elegir el más cercano: los puntos cercanos pesan mucho más gracias al factor 1/d², así que dominan de forma natural.
-Ves todos los obstáculos a la vez (una pared a un lado y una caja delante, por ejemplo), en vez de reaccionar solo a uno y oscilar cuando el “más cercano” cambia de un ciclo a otro.
+En conclusión, esta práctica fue más fácil de lo que pensaba al principio, cuando me hice un lío con lo de mezclar el siguelíneas y el detectar obstáculos al mismo tiempo, pero al final era más sencillo de lo que pensaba. Y menos mal, porque no me salía.
 
-En resumen, el punto más cercano era una aproximación para simplificar; sumar todo el láser es el campo de potencial “de verdad”, y ahí la detección explícita sobra.
-
-
-Comentarios míos (i helped! i swear!) (embarrasing)
-
-https://youtu.be/SQmn1ghYVmU
+Vídeo:
+(https://youtu.be/SQmn1ghYVmU)
