@@ -126,3 +126,40 @@ El video del circuito de Montreal
 
 El video del circuito de Nurtburing
 (https://youtu.be/JlvWDe4Aaug)
+
+
+## OBSTACLE AVOIDANCE
+
+Esta práctica trataba del mismo coche de la anterior, que simplemente va haciendo el 
+circuito pero guiándose siguiendo una lista de coordenadas objetivo, pasando el coche 
+por cada uno. Estos "target", sus coordenadas funcionan como 
+vectores atractivos para el robot, mientras que los obstáculos que se van encontrando, y 
+las paredes del circuito, funcionan commo vectores repulsivos. La suma de los vectores 
+atractivos y repulsivos crean el vector resultante por el que se guía el robot para 
+continuar el circuito sin chocarse con los obstáculos.
+
+En esta práctica, lo que más me ha costado al principio, ha sido entender el orden en el 
+que tenía que coger los datos y las coordenadas. Al principio tenía el bucle principal 
+para que lo primero que detectara fuera si había obstáculos, entonces tenía una función que 
+detectara los obstáculos, los esquivara y me devolviera las coordenadas del obstáculo. Pero 
+necesitaba el vector de repulsión para crear el vector resultante, e hice una función que me 
+lo sacara. Y de repente tenía dos funciones que hacían prácticamente lo mismo. Esto me pasa 
+por coger mi código de Arquitectura Software. Bueno. Mezcle las dos funciones en una, que a 
+partir de los datos del laser detectara si había un obstáculo, y sacar de ahí solamente el 
+vector repulsivo. Me líe yo sola.
+
+Sorprendentement, ajustar la velocidad y la k del vector resultante fue más sencilla esta vez 
+porque no buscaba mucha velocidad en los motores. Con lo que estuve jugando es con la distancia 
+mínima a la que se detectaba un obstáculo. Si era demasiada (2.5) y el robot se quedaba entre 
+un coche y una pared, e intenta salir de ahí yendo hacia delante, se quedaba atascado y zigzagueando 
+por los dos obstáculos a su alrededor. Entonces la reduje a 2.3. Sólo es un cambio significativo para 
+mí, pero intenté de alguna forma que cuando detectara un obstáculo en vez de girarse siempre al 
+mismo sitio, que girara a donde habría más hueco, por ejemplo con lo de multiplicar por -1 ó 1 
+a la velocidad angular. Pero no me salía, y simplemente reduje la distancia mínima, y funcionaba, así que \^·_·^/.
+
+En conclusión, esta práctica fue más fácil de lo que pensaba al principio, cuando me hice un lío 
+con lo de mezclar el siguelíneas y el detectar obstáculos al mismo tiempo, pero al final era más 
+sencillo de lo que pensaba. Y menos mal, porque no me salía.
+
+Vídeo:
+(https://youtu.be/SQmn1ghYVmU)
