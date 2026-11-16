@@ -1,0 +1,123 @@
+La idea del BFS aquí
+
+Imagina que echas una gota de agua en la celda objetivo y se expande por las celdas 
+libres (carretera), de una en una. Cada celda guarda en qué “ola” le llegó el agua, 
+o sea, cuántos pasos hay desde ella hasta el objetivo. Eso es la matriz dist:
+
+dist[objetivo] = 0
+sus vecinos libres tienen 1, los siguientes 2, etc.
+las celdas no alcanzadas (obstáculos) se quedan en -1.
+
+Una vez tienes dist, sacar la ruta es trivial: desde la celda del robot, te mueves 
+siempre al vecino con menor dist, hasta llegar a 0. Eso es el “gradiente” del nombre 
+del ejercicio.
+
+
+
+La idea de las penalizaciones
+
+El BFS trata todas las celdas libres igual: dar un paso cuesta 1, pegado a la pared 
+o en medio de la carretera. Por eso la ruta más corta suele rozar las esquinas.
+
+Hay dos formas de empujar la ruta hacia el centro:
+
+Erosión (margen duro): declaras “no libres” las celdas a menos de MARGIN celdas de 
+un obstáculo. El BFS ni las considera. Es simple, pero si el margen es demasiado 
+grande, la carretera puede quedar cortada. Penalización (margen blando): las celdas 
+cercanas a obstáculos siguen siendo transitables, pero cuestan más. El planificador 
+evita las zonas pegadas a la pared salvo que no haya otra opción. Es más robusto 
+y es lo que te recomiendo.
+
+El problema es que el BFS solo sirve cuando todos los pasos cuestan igual. Con 
+costes distintos hay que usar Dijkstra, que es un BFS con cola de prioridad (heapq): 
+siempre expande la celda con menor coste acumulado.
+
+
+
+Paso 1: distancia de cada celda al obstáculo más cercano
+
+Se hace con un BFS que arranca desde todos los obstáculos a la vez:
+import heapq
+
+def obstacle_distance(mat_map):
+    n_rows, n_cols = len(mat_map), len(mat_map[0])
+    od = [[-1] * n_cols for _ in range(n_rows)]
+    queue = deque()
+    for r in range(n_rows):
+        for c in range(n_cols):
+            if mat_map[r][c] != FREE:
+                od[r][c] = 0
+                queue.append((r, c))
+    while queue:
+        r, c = queue.popleft()
+        for dr, dc in NEIGHBOURS:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < n_rows and 0 <= nc < n_cols and od[nr][nc] == -1:
+                od[nr][nc] = od[r][c] + 1
+                queue.append((nr, nc))
+    return od
+    
+Ahora od[r][c] dice a cuántas celdas está esa celda de la pared más cercana.
+
+Paso 2: Dijkstra con coste penalizado
+
+NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+SAFE_DIST = 4      # a partir de esta distancia a la pared no hay penalización
+PENALTY = 5.0      # cuánto se penaliza estar pegado a la pared
+
+def step_cost(od_value):
+    # coste base 1 + penalización que crece cuanto más cerca de la pared
+    return 1.0 + PENALTY * max(0, SAFE_DIST - od_value)
+
+def planning(mat_map, tar_cell, rob_cell):
+    n_rows, n_cols = len(mat_map), len(mat_map[0])
+    od = obstacle_distance(mat_map)
+
+    dist = [[float('inf')] * n_cols for _ in range(n_rows)]
+    r_tar, c_tar = tar_cell
+    dist[r_tar][c_tar] = 0.0
+    heap = [(0.0, r_tar, c_tar)]
+
+    while heap:
+        d, r, c = heapq.heappop(heap)
+        if d > dist[r][c]:
+            continue                     # entrada obsoleta
+        for dr, dc in NEIGHBOURS:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < n_rows and 0 <= nc < n_cols and mat_map[nr][nc] == FREE:
+                nd = d + step_cost(od[nr][nc])
+                if nd < dist[nr][nc]:
+                    dist[nr][nc] = nd
+                    heapq.heappush(heap, (nd, nr, nc))
+
+    row, col = rob_cell
+    if dist[row][col] == float('inf'):
+        return [], dist                  # robot en celda no alcanzable
+
+    path_cells = [(row, col)]
+    while dist[row][col] != 0:
+        best = None
+        for dr, dc in NEIGHBOURS:
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < n_rows and 0 <= nc < n_cols:
+                if best is None or dist[nr][nc] < dist[best[0]][best[1]]:
+                    best = (nr, nc)
+        row, col = best
+        path_cells.append((row, col))
+
+    return path_cells, dist
+
+La extracción de la ruta es idéntica a la de antes: descenso por el gradiente. 
+Lo único que cambia es cómo se calcula dist.
+
+
+
+Cómo ajustarlo
+SAFE_DIST: la anchura del “pasillo seguro”. Prueba con 3-5. Si tu carretera tiene 
+unas 8 celdas de ancho, un valor de 4 ya empuja el camino hacia el centro.
+PENALTY: si es muy bajo, la ruta sigue rozando las paredes. Si es muy alto, da 
+rodeos enormes para ganar un poco de margen. Empieza en 3-5.
+Depuración: muestra od con showNumpy (normalizado igual) para comprobar que los 
+valores tienen sentido, o dibuja la ruta con y sin penalización para ver la diferencia.
+
+

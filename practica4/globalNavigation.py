@@ -3,76 +3,94 @@ import HAL
 import Frequency
 
 import math
+import numpy as np
+from collections import deque
 
 IDEAL_RATE = 50
+FREE = 255
+STEP = 10
 
 V_STRAIGHT = 5 # velocidad lineal máxima, 10 y 6
 V_TURN = 3
 
 k_ang = 1.5 # ganancia del ángulo del vector resultante -> velocidad angular
-
 REACHED_DIST = 0.5 #umbral pbjetivo alcanzado
 
 #PLANIFICACIÓN - se hace sólo una vez - BFS, gradiente, ruta) - todo en celdas.
 #CONTROL - en el bucle while - (mandar v y w al robot) - todo en mundo.
 
-"""
-HACER UNA FUNCIÓN QUE SEA PLANIFICACIÓN Y DEVUELVA path_cell
+def planning(mat_map, tar_cell, rob_cell):
+	n_rows = len(mat_map)
+	n_cols = len(mat_map[0])
 
-from collections import deque
+	dist = [[-1] * n_cols for _ in range(n_rows)] #celdas no alcanzadas
+	r_tar, c_tar = tar_cell
+	dist[r_tar][c_tar] = 0 #celda objetivo
+	queue = deque([(r_tar, c_tar)])
 
-rows = len(map_matrix)
-cols = len(map_matrix[0])
-FREE = 255   # ¡comprueba qué valor es "carretera" imprimiendo map_matrix!
+	neighbours_directions = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
-# --- BFS desde el objetivo ---
-dist = [[-1] * cols for _ in range(rows)]
-r0, c0 = target_cell
-dist[r0][c0] = 0
-q = deque([(r0, c0)])
+	while(queue):
+		r, c = queue.popleft()
+		for dir_r, dir_c in neighbours_directions:
+			num_r = r + dir_r
+			num_c = c + dir_c
+			if num_r >= 0 and num_r < n_rows and num_c >= 0 and num_c < n_cols and  dist[num_r][num_c] == -1 and mat_map[num_r][num_c] == FREE:
+				dist[num_r][num_c] = dist[r][c] + 1
+				queue.append((num_r, num_c))
 
-while q:
-    r, c = q.popleft()
-    for dr, dc in ((1,0), (-1,0), (0,1), (0,-1)):
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < rows and 0 <= nc < cols \
-           and dist[nr][nc] == -1 and map_matrix[nr][nc] == FREE:
-            dist[nr][nc] = dist[r][c] + 1
-            q.append((nr, nc))
+	row, col = rob_cell
+	if dist[row][col] == -1:
+		return [], dist #robot en celda no alcanzable
 
-# --- Extraer ruta bajando por el gradiente ---
-path_cells = [robot_cell]
-r, c = robot_cell
-while dist[r][c] != 0:
-    best = None
-    for dr, dc in ((1,0), (-1,0), (0,1), (0,-1)):
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < rows and 0 <= nc < cols and dist[nr][nc] != -1:
-            if best is None or dist[nr][nc] < dist[best[0]][best[1]]:
-                best = (nr, nc)
-    r, c = best
-    path_cells.append((r, c))
-"""
+	path_cells = [rob_cell]
+	while dist[row][col] != 0:
+		best = None
+		for dr, dc in neighbours_directions:
+			nr = row + dr
+			nc = col + dc
+			if 0 <= nr and nr < n_rows and 0 <= nc and nc < n_cols and dist[nr][nc] != -1:
+				if best is None or dist[nr][nc] < dist[best[0]][best[1]]:
+					best = (nr, nc)
+		row, col = best
+		path_cells.append((row, col))
 
-px = HAL.getPose3d().x
-py = HAL.getPose3d().y
-tx = WebGUI.getTargetPose().x
-ty = WebGUI.getTargetPose().y
+	return path_cells, dist
 
-robot_cell = WebGUI.worldToGrid(px, py)
-target_cell = WebGUI.worldToGrid(tx, ty)
+
+pose = HAL.getPose3d()
+target = WebGUI.getTargetPose()
+
+robot_cell = WebGUI.worldToGrid(pose)
+target_cell = WebGUI.worldToGrid(target)
 
 #mapa de penalizaciones y mapa de sitios a dónde ir
-map_matrix = WebGUI.getMap('/resources/exercises/global_navigation/images cityLargenBin.png') #matriz del mapa, qué celdas ocupadas y cuáles no
+map_matrix = WebGUI.getMap('/resources/exercises/global_navigation/images/cityLargenBin.png') #matriz del mapa, qué celdas ocupadas y cuáles no
 
-#path_cells = [...] #BFS + extraer ruta
-#N = tamano de path_cell
+path_cells, dist = planning(map_matrix, target_cell, robot_cell) #BFS + extraer ruta
+d = np.array(dist, dtype=np.float32)
+valid = np.isfinite(d)
+img = np.zeros(d.shape, dtype=np.uint8)
+img[valid] = (255 * d[valid] / d[valid].max()).astype(np.uint8)
+WebGUI.showNumpy(img)
+"""
+WebGUI.showPath(path_cells)
+
+N = len(path_cells)
+path_cells += [target]
 waypoints = []
 for cell in path_cells[::N + 1]:
 	waypoints.append(WebGUI.gridToWorld(cell))
+"""
+STEP = 10
+cells = path_cells[::STEP]
+if cells[-1] != path_cells[-1]:
+	cells.append(path_cells[-1])
+waypoints = [WebGUI.gridToWorld(c) for c in cells]
 
-WebGUI.showNumpy(numpy)
-WebGUI.showPath(array)
+WebGUI.showPath(waypoints)
+
+
 
 i = 0
 while True:
@@ -97,5 +115,4 @@ while True:
 
 	HAL.setV(v)
 	HAL.setW(w)
-
 
