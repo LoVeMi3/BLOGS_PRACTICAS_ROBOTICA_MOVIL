@@ -1,4 +1,4 @@
-## PRÁCTICA 4
+## GLOBAL NAVIGATION
 
 
 Definitivamente, confirmamos que esta práctica ha sido la que más difícil se me 
@@ -52,4 +52,18 @@ probar un nuevo punto, tendrán que cerrar el docker y volver a abrirlo para sel
 el nuevo objetivo del robot.
 
 
-Vídeo de la práctica:
+
+Vídeos de la práctica (con V_STRAIGHT = 5 y V_TURN = 3):
+
+https://youtu.be/JKGk0_zgj8Q
+
+https://youtu.be/HO76WYj6n6k
+
+
+Vídeos de la práctica (con V_STRAIGHT = 10 y V_TURN = 6):
+
+https://youtu.be/pH0hZh26peU
+
+https://youtu.be/x9GNVnJFS3U
+
+
