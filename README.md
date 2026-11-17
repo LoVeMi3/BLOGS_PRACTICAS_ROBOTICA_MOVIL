@@ -163,3 +163,72 @@ sencillo de lo que pensaba. Y menos mal, porque no me salía.
 
 Vídeo:
 (https://youtu.be/SQmn1ghYVmU)
+
+
+
+## GLOBAL NAVIGATION
+
+Definitivamente, confirmamos que esta práctica ha sido la que más difícil se me 
+ha hecho. Se trataba de trabajar con la navegación global, en la que tenemos un 
+mapa aprendido, con sus waypoints, dividido en celdas y/o coordenadas métricas. 
+Por él se va moviendo el robot en dirección al objetivo (target) que le señalamos 
+al clickar en él en el mapa de la simulación. 
+
+El primer paso que dí fue entender los lugares que debían ocupar el control y la 
+planificación de la navegación. El control del robot, el que se mueva siguiendo 
+la ruta planificada, que gire o que vaya recto, va dentro del bucle while, según 
+la frecuencia ideal, lo que ya hemos hecho antes. Pero el dilema ahora es la 
+planificación, que sólo se hace una vez, fuera del bucle. No se puede hacer la 
+planificación dentro del bucle porque entonces ya no es global y no tendría sentido 
+trabajar con un mapa que nos ayuda a calcular la mejor ruta.
+
+A continuuación, cree una función de planificación a partir de las variables de 
+la matriz del mapa, y las celdas de origen y del objetivo. La función de planificación 
+trata básicamente de asignarles valores numéricos a las celdas de toda la matriz 
+del mapa según lo cerca que estén del objetivo desde el origen. Primero, todas las 
+celdas valen -1. Segundo, según la dirección que puede tomar el coche y la distancia 
+en celdas a la pared más cercana, creamos el mapa de penalizaciones (Djikstra), 
+calculando dist teniendo en cuenta el coste de cada paso en el mapa. Estos costes 
+de cada celda van del objetivo al origen del coche, cuanto menos coste más cerca 
+del objetivo nos encontramos. El coste de la celda depende también de si se encuentra 
+más cerca o no de la pared (me atravesaba algunas si no). Y lo tercero y último 
+de la función de planficación es el cálculo de la mejor ruta a seguir, dependiendo 
+de los valores que les hemos asignado antes a las celdas del mapa. Y devuelve 
+ambas.
+En la función de planificación me ayudo de funciones como step_cost, para calcular 
+el coste nuevo de la celda que estamos valorando. Y también utilizo la función 
+obstacle_distance, que nos devuelve las celdas que están pegadas a las paredes.
+
+Siendo realistas, la parte de planificación no funcionaría sin comprobar que se 
+selecciona una X en el mapa, una celda objetivo a la que mandar el coche; y tampoco 
+sin sacar la celda origen de la que parte el coche. Hay que hacer también las debidas 
+comprobaciones, como que tenemos una ruta que seguir. Eso sí, la parte de numpy 
+sí que no sabía cómo se hacía, no sabía cómo hacer para mostrar el mapa con el 
+gradiente. Y para la prósima vez, tengo que acordarme que el método worldToGrid 
+devuelve (columna, fila), no (fila, columna).
+
+Apunte final, la función de make_cell_wp me ayudaron unos compaleros a hacerlo 
+porque no entendía por qué me atravesaba las paredes al girar justo antes de una 
+esquina, en la que tenía que girar realmente. Lo que hace es ir marcándolos uno a 
+uno, dependiendo de la ruta que se le pase y la cantidad de pasos (10) que va a 
+ir haciendo.
+
+Ha sido difícil, mucho. Menos mal que nos dieron una tarde más. Eso sí, no renuevo 
+el valor de la celda de target una vez llego a el objetivo, lo guarda. Si quieren 
+probar un nuevo punto, tendrán que cerrar el docker y volver a abrirlo para seleccionar 
+el nuevo objetivo del robot.
+
+
+
+Vídeos de la práctica (con V_STRAIGHT = 5 y V_TURN = 3):
+
+(https://youtu.be/JKGk0_zgj8Q)
+
+(https://youtu.be/HO76WYj6n6k)
+
+
+Vídeos de la práctica (con V_STRAIGHT = 10 y V_TURN = 6):
+
+(https://youtu.be/pH0hZh26peU)
+
+(https://youtu.be/x9GNVnJFS3U)
