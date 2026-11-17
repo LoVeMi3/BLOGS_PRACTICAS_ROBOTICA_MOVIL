@@ -1,123 +1,55 @@
-La idea del BFS aquí
-
-Imagina que echas una gota de agua en la celda objetivo y se expande por las celdas 
-libres (carretera), de una en una. Cada celda guarda en qué “ola” le llegó el agua, 
-o sea, cuántos pasos hay desde ella hasta el objetivo. Eso es la matriz dist:
-
-dist[objetivo] = 0
-sus vecinos libres tienen 1, los siguientes 2, etc.
-las celdas no alcanzadas (obstáculos) se quedan en -1.
-
-Una vez tienes dist, sacar la ruta es trivial: desde la celda del robot, te mueves 
-siempre al vecino con menor dist, hasta llegar a 0. Eso es el “gradiente” del nombre 
-del ejercicio.
+## PRÁCTICA 4
 
 
+Definitivamente, confirmamos que esta práctica ha sido la que más difícil se me 
+ha hecho. Se trataba de trabajar con la navegación global, en la que tenemos un 
+mapa aprendido, con sus waypoints, dividido en celdas y/o coordenadas métricas. 
+Por él se va moviendo el robot en dirección al objetivo (target) que le señalamos 
+al clickar en él en el mapa de la simulación. 
 
-La idea de las penalizaciones
+El primer paso que dí fue entender los lugares que debían ocupar el control y la 
+planificación de la navegación. El control del robot, el que se mueva siguiendo 
+la ruta planificada, que gire o que vaya recto, va dentro del bucle while, según 
+la frecuencia ideal, lo que ya hemos hecho antes. Pero el dilema ahora es la 
+planificación, que sólo se hace una vez, fuera del bucle. No se puede hacer la 
+planificación dentro del bucle porque entonces ya no es global y no tendría sentido 
+trabajar con un mapa que nos ayuda a calcular la mejor ruta.
 
-El BFS trata todas las celdas libres igual: dar un paso cuesta 1, pegado a la pared 
-o en medio de la carretera. Por eso la ruta más corta suele rozar las esquinas.
+A continuuación, cree una función de planificación a partir de las variables de 
+la matriz del mapa, y las celdas de origen y del objetivo. La función de planificación 
+trata básicamente de asignarles valores numéricos a las celdas de toda la matriz 
+del mapa según lo cerca que estén del objetivo desde el origen. Primero, todas las 
+celdas valen -1. Segundo, según la dirección que puede tomar el coche y la distancia 
+en celdas a la pared más cercana, creamos el mapa de penalizaciones (Djikstra), 
+calculando dist teniendo en cuenta el coste de cada paso en el mapa. Estos costes 
+de cada celda van del objetivo al origen del coche, cuanto menos coste más cerca 
+del objetivo nos encontramos. El coste de la celda depende también de si se encuentra 
+más cerca o no de la pared (me atravesaba algunas si no). Y lo tercero y último 
+de la función de planficación es el cálculo de la mejor ruta a seguir, dependiendo 
+de los valores que les hemos asignado antes a las celdas del mapa. Y devuelve 
+ambas.
+En la función de planificación me ayudo de funciones como step_cost, para calcular 
+el coste nuevo de la celda que estamos valorando. Y también utilizo la función 
+obstacle_distance, que nos devuelve las celdas que están pegadas a las paredes.
 
-Hay dos formas de empujar la ruta hacia el centro:
+Siendo realistas, la parte de planificación no funcionaría sin comprobar que se 
+selecciona una X en el mapa, una celda objetivo a la que mandar el coche; y tampoco 
+sin sacar la celda origen de la que parte el coche. Hay que hacer también las debidas 
+comprobaciones, como que tenemos una ruta que seguir. Eso sí, la parte de numpy 
+sí que no sabía cómo se hacía, no sabía cómo hacer para mostrar el mapa con el 
+gradiente. Y para la prósima vez, tengo que acordarme que el método worldToGrid 
+devuelve (columna, fila), no (fila, columna).
 
-Erosión (margen duro): declaras “no libres” las celdas a menos de MARGIN celdas de 
-un obstáculo. El BFS ni las considera. Es simple, pero si el margen es demasiado 
-grande, la carretera puede quedar cortada. Penalización (margen blando): las celdas 
-cercanas a obstáculos siguen siendo transitables, pero cuestan más. El planificador 
-evita las zonas pegadas a la pared salvo que no haya otra opción. Es más robusto 
-y es lo que te recomiendo.
+Apunte final, la función de make_cell_wp me ayudaron unos compaleros a hacerlo 
+porque no entendía por qué me atravesaba las paredes al girar justo antes de una 
+esquina, en la que tenía que girar realmente. Lo que hace es ir marcándolos uno a 
+uno, dependiendo de la ruta que se le pase y la cantidad de pasos (10) que va a 
+ir haciendo.
 
-El problema es que el BFS solo sirve cuando todos los pasos cuestan igual. Con 
-costes distintos hay que usar Dijkstra, que es un BFS con cola de prioridad (heapq): 
-siempre expande la celda con menor coste acumulado.
-
-
-
-Paso 1: distancia de cada celda al obstáculo más cercano
-
-Se hace con un BFS que arranca desde todos los obstáculos a la vez:
-import heapq
-
-def obstacle_distance(mat_map):
-    n_rows, n_cols = len(mat_map), len(mat_map[0])
-    od = [[-1] * n_cols for _ in range(n_rows)]
-    queue = deque()
-    for r in range(n_rows):
-        for c in range(n_cols):
-            if mat_map[r][c] != FREE:
-                od[r][c] = 0
-                queue.append((r, c))
-    while queue:
-        r, c = queue.popleft()
-        for dr, dc in NEIGHBOURS:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < n_rows and 0 <= nc < n_cols and od[nr][nc] == -1:
-                od[nr][nc] = od[r][c] + 1
-                queue.append((nr, nc))
-    return od
-    
-Ahora od[r][c] dice a cuántas celdas está esa celda de la pared más cercana.
-
-Paso 2: Dijkstra con coste penalizado
-
-NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
-SAFE_DIST = 4      # a partir de esta distancia a la pared no hay penalización
-PENALTY = 5.0      # cuánto se penaliza estar pegado a la pared
-
-def step_cost(od_value):
-    # coste base 1 + penalización que crece cuanto más cerca de la pared
-    return 1.0 + PENALTY * max(0, SAFE_DIST - od_value)
-
-def planning(mat_map, tar_cell, rob_cell):
-    n_rows, n_cols = len(mat_map), len(mat_map[0])
-    od = obstacle_distance(mat_map)
-
-    dist = [[float('inf')] * n_cols for _ in range(n_rows)]
-    r_tar, c_tar = tar_cell
-    dist[r_tar][c_tar] = 0.0
-    heap = [(0.0, r_tar, c_tar)]
-
-    while heap:
-        d, r, c = heapq.heappop(heap)
-        if d > dist[r][c]:
-            continue                     # entrada obsoleta
-        for dr, dc in NEIGHBOURS:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < n_rows and 0 <= nc < n_cols and mat_map[nr][nc] == FREE:
-                nd = d + step_cost(od[nr][nc])
-                if nd < dist[nr][nc]:
-                    dist[nr][nc] = nd
-                    heapq.heappush(heap, (nd, nr, nc))
-
-    row, col = rob_cell
-    if dist[row][col] == float('inf'):
-        return [], dist                  # robot en celda no alcanzable
-
-    path_cells = [(row, col)]
-    while dist[row][col] != 0:
-        best = None
-        for dr, dc in NEIGHBOURS:
-            nr, nc = row + dr, col + dc
-            if 0 <= nr < n_rows and 0 <= nc < n_cols:
-                if best is None or dist[nr][nc] < dist[best[0]][best[1]]:
-                    best = (nr, nc)
-        row, col = best
-        path_cells.append((row, col))
-
-    return path_cells, dist
-
-La extracción de la ruta es idéntica a la de antes: descenso por el gradiente. 
-Lo único que cambia es cómo se calcula dist.
+Ha sido difícil, mucho. Menos mal que nos dieron una tarde más. Eso sí, no renuevo 
+el valor de la celda de target una vez llego a el objetivo, lo guarda. Si quieren 
+probar un nuevo punto, tendrán que cerrar el docker y volver a abrirlo para seleccionar 
+el nuevo objetivo del robot.
 
 
-
-Cómo ajustarlo
-SAFE_DIST: la anchura del “pasillo seguro”. Prueba con 3-5. Si tu carretera tiene 
-unas 8 celdas de ancho, un valor de 4 ya empuja el camino hacia el centro.
-PENALTY: si es muy bajo, la ruta sigue rozando las paredes. Si es muy alto, da 
-rodeos enormes para ganar un poco de margen. Empieza en 3-5.
-Depuración: muestra od con showNumpy (normalizado igual) para comprobar que los 
-valores tienen sentido, o dibuja la ruta con y sin penalización para ver la diferencia.
-
-
+Vídeo de la práctica:
