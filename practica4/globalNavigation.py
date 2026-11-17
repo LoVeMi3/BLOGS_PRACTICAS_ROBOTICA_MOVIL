@@ -14,11 +14,11 @@ DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 SAFE_DIST = 4 # a partir de esta distancia a la pared no hay penalización
 PENALTY = 4.0 # cuánto se penaliza estar pegado a la pared
 
-V_STRAIGHT = 5 # velocidad lineal máxima, 10 y 6
-V_TURN = 3
+V_STRAIGHT = 10 # velocidad lineal máxima, 10 y 6
+V_TURN = 6
 
-k_ang = 1.5 # ganancia del ángulo del vector resultante -> velocidad angular
-REACHED_DIST = 1.0 #umbral pbjetivo alcanzado
+k_ang = 1.7 # ganancia del ángulo del vector resultante -> velocidad angular
+REACHED_DIST = 1.3 #umbral pbjetivo alcanzado
 
 
 #distancia en celdas de la pared más cercana
