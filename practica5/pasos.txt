@@ -1,0 +1,50 @@
+Paso 1: Entender qué calcula la regla de Bayes (sin código)
+
+Para cada celda del mapa guardas una creencia sobre si está ocupada. Cada vez que el láser la "ve", actualizas esa creencia con la fórmula de tu diapositiva:
+
+ρ_mapa(t) = (ρ_obs / ρ_apriori) · ρ_mapa(t-1)
+
+Con prior 0.5, ρ_apriori = 1, así que queda ρ_mapa(t) = ρ_obs · ρ_mapa(t-1). Es decir: multiplicas lo que ya creías por lo que te dice la lectura actual.
+
+Para no multiplicar ratios (más incómodo), se toman logaritmos y la multiplicación pasa a ser una suma. Con eso, cada actualización es simplemente "sumar un número a la celda".
+
+Paso 2: Decidir qué guardar
+
+Necesitas una rejilla (matriz) donde cada celda guarda el valor acumulado. Decide tú:
+
+Resolución (¿10 cm por celda?).
+Tamaño (¿cuántos metros mide el almacén?).
+Dónde cae el (0,0) del mundo dentro de la matriz.
+Valor inicial: ¿qué valor corresponde a p = 0.5?
+Paso 3: Calcular tus tres constantes del modelo de sensor
+
+Tu figura del modelo de Elfes dice: vacío = 0.4, ocupado = 0.6, desconocido = 0.5. Para cada uno calcula el logaritmo de p/(1-p). Te saldrán un número negativo, uno positivo y un cero. Piensa por qué tienen ese signo.
+
+Paso 4: Conversión mundo → celda
+
+Necesitas una función que, dado un punto (x, y) en metros, te devuelva el índice (fila, columna) de la matriz. Es dividir por la resolución y sumar el desplazamiento del origen. Pruébala a mano con un par de puntos.
+
+Paso 5: Para cada rayo del láser, decidir qué celdas actualizar
+
+Esta es la parte clave. Para un rayo con medida r:
+
+Calcula su ángulo en el mundo: orientación del robot + ángulo del rayo respecto al robot. Ojo con la convención de tu láser (en tu código, el índice 0 es la derecha y el 90 el frente).
+Recorre puntos a lo largo del rayo desde el robot hasta r, de celda en celda.
+Las celdas antes de r reciben el valor de "vacío".
+La celda en r recibe el valor de "ocupado", pero solo si r es menor que el rango máximo (si el láser no chocó con nada, no hay obstáculo).
+Más allá de r no tocas nada (desconocido).
+Paso 6: Evitar que la creencia se bloquee
+
+Si una celda se acumula hasta valores enormes, luego no puede cambiar de opinión. Piensa en poner un límite superior e inferior al valor acumulado.
+
+Paso 7: Integrarlo en tu bucle
+Llama a la actualización del mapa dentro del while True, con la pose y el láser.
+No hace falta hacerlo a 50 Hz; puedes hacerlo cada pocas iteraciones.
+Para ver el resultado, convierte de vuelta a probabilidad (la operación inversa del logaritmo) o simplemente pinta según el signo del valor.
+Antes de nada, arregla tu código base
+
+Tu código actual tiene problemas que impedirán que ejecute: state es variable y función a la vez, defines state = SPIRAL antes de definir SPIRAL, faltan global dentro de la función, faltan import random y las constantes k_rep, d_influence, d_min, mezclas tabs y espacios, y el bucle no llama a la máquina de estados.
+
+Por dónde empezar
+
+Te sugiero: primero el paso 3 (las constantes) y el paso 4 (la conversión). Cuando los tengas, enséñamelos y los revisamos juntos antes de pasar al rayo. ¿Quieres que te dé alguna pista más concreta sobre alguno de los pasos?

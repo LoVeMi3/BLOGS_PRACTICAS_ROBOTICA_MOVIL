@@ -3,30 +3,41 @@ import HAL
 import Frequency
 
 import math
+import random
 
 IDEAL_RATE = 50
 
 V_STRAIGHT = 10 # velocidad lineal máxima
 V_TURN = 6
 
+# Estados
+SPIRAL, FORWARD, BACKUP, TURN = range(4)
 state = SPIRAL
+
 ticks = 0
 turn_ticks = 0
 turn_dir = 1.0  # +1 izquierda, -1 derecha
+k_rep = 0.5
+d_influence = 2.3
+d_min = 0.05
+
+BLANK = 0.4
+L_BLANK = log(BLANK/ 1.0 - BLANK) #log(p / (1.0 - p)
+TAKEN = 0.6
+L_TAKEN = log(TAKEN/ 1.0 - TAKEN)
+SUS = 0.5
+L_SUS = log(SUS/ 1.0 - SUS)
 
 #logaritmo de ratio de probabilidad - regla de bayes
 #exploración - llevar a cuenta por los puntos que ya he pasado:
 # estén ocupados o libres, la exploración busca zonas por las que no ha pasado
-
-# Estados
-SPIRAL, FORWARD, BACKUP, TURN = range(4)
 
 def rd(laser, i):
     """Lectura del láser saturada a 5 m y con valores no finitos -> 5 m."""
     r = laser.values[i]
     return min(r, 5.0) if math.isfinite(r) else 5.0
 
-def state(laser):
+def get_state(laser):
 	# Distancias mínimas por zonas
     center = min(rd(laser, i) for i in range(60, 121)) # ±30º frontal
     sideL = min(rd(laser, i) for i in range(140, 180)) # lado izquierdo
@@ -101,6 +112,30 @@ def repulsion(laser):
 		ry += mag * (-oy / d)
 
 	return rx / 180.0, ry / 180.0 #evitar valores enormes
+
+#paso 4?
+#waypoints para cada esquina porque me atraviesa las paredes si no
+def make_cells_wp(path, step):
+	waypoints = []
+	waypoints.append(path[0])
+	run = 0
+	for i in range(1, len(path) - 1):
+		d_prev = (path[i][0] - path[i-1][0], path[i][1] - path[i-1][1])
+		d_next = (path[i+1][0] - path[i][0], path[i+1][1] - path[i][1])
+		run += 1
+		if d_prev != d_next or run >= step: #esquina o tramo largo
+			waypoints.append(path[i])
+			run = 0
+	waypoints.append(path[-1])
+	return waypoints
+
+rx, ry = WebGUI.worldToGrid([pose.x, pose.y])
+robot_cell = (ry, rx)
+tx, ty = WebGUI.worldToGrid(target)
+target_cell = (ty, tx)
+path_cells, dist = planning(map_matrix, target_cell, robot_cell) #BFS + extraer ruta
+cells = make_cells_wp(path_cells, STEP)
+waypoints = [WebGUI.gridToWorld((c, r)) for (r, c) in cells]
 
 while True:
     Frequency.tick(IDEAL_RATE)
