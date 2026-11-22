@@ -1,50 +1,109 @@
-Paso 1: Entender qué calcula la regla de Bayes (sin código)
+Paso 0: Arreglar la base (antes de tocar el mapa)
 
-Para cada celda del mapa guardas una creencia sobre si está ocupada. Cada vez que el láser la "ve", actualizas esa creencia con la fórmula de tu diapositiva:
+Lo que ya tienes y vale: rd(), la estructura de repulsion() (el bucle sobre 180 rayos) y el bucle principal con Frequency.tick.
 
-ρ_mapa(t) = (ρ_obs / ρ_apriori) · ρ_mapa(t-1)
+Lo que hay que corregir:
 
-Con prior 0.5, ρ_apriori = 1, así que queda ρ_mapa(t) = ρ_obs · ρ_mapa(t-1). Es decir: multiplicas lo que ya creías por lo que te dice la lectura actual.
+get_state → update_state: se llama igual que la variable state. Añade global state, ticks, turn_ticks, turn_dir dentro y escribe return al nivel de la función.
+Tabs y espacios: elige solo espacios (4) en todo el archivo.
+Todo lo del planificador (rx, ry = WebGUI.worldToGrid(...), planning, make_cells_wp, waypoints): usa variables que no existen aquí (pose, target, map_matrix, STEP). Coméntalo por ahora: es de otro ejercicio.
+Dentro del bucle: llama a HAL.getPose3d() una sola vez y guárdalo en pose. Después llama a update_state(laser).
+Paso 1: Concepto (sin código)
 
-Para no multiplicar ratios (más incómodo), se toman logaritmos y la multiplicación pasa a ser una suma. Con eso, cada actualización es simplemente "sumar un número a la celda".
+Igual que antes: cada celda guarda un log-odds y cada lectura le suma un número.
 
-Paso 2: Decidir qué guardar
+Paso 2: Decidir la rejilla
 
-Necesitas una rejilla (matriz) donde cada celda guarda el valor acumulado. Decide tú:
+Define constantes al principio del archivo y usa numpy:
 
-Resolución (¿10 cm por celda?).
-Tamaño (¿cuántos metros mide el almacén?).
-Dónde cae el (0,0) del mundo dentro de la matriz.
-Valor inicial: ¿qué valor corresponde a p = 0.5?
-Paso 3: Calcular tus tres constantes del modelo de sensor
+python
+import numpy as np
 
-Tu figura del modelo de Elfes dice: vacío = 0.4, ocupado = 0.6, desconocido = 0.5. Para cada uno calcula el logaritmo de p/(1-p). Te saldrán un número negativo, uno positivo y un cero. Piensa por qué tienen ese signo.
+RES = 0.1            # metros por celda
+SIZE_M = 40.0        # tamaño del almacén (ajústalo)
+N = int(SIZE_M / RES)
+ORIGIN = N // 2      # el (0,0) del mundo cae en el centro de la matriz
+grid = np.zeros((N, N))   # 0 = log-odds de p=0.5
 
-Paso 4: Conversión mundo → celda
+Reutilizas: nada de tu código, pero grid = np.zeros(...) encaja con que el valor inicial sea 0 (por eso el prior 0.5 es cómodo).
 
-Necesitas una función que, dado un punto (x, y) en metros, te devuelva el índice (fila, columna) de la matriz. Es dividir por la resolución y sumar el desplazamiento del origen. Pruébala a mano con un par de puntos.
+Paso 3: Las constantes
 
-Paso 5: Para cada rayo del láser, decidir qué celdas actualizar
+Aquí tu código tiene un error de paréntesis: log(BLANK/ 1.0 - BLANK) calcula BLANK/1.0 - BLANK, que da 0. Además log no está importado, así que usa math.log.
 
-Esta es la parte clave. Para un rayo con medida r:
+python
+L_BLANK = math.log(BLANK / (1.0 - BLANK))   # negativo
+L_TAKEN = math.log(TAKEN / (1.0 - TAKEN))   # positivo
+L_SUS   = math.log(SUS   / (1.0 - SUS))     # 0
 
-Calcula su ángulo en el mundo: orientación del robot + ángulo del rayo respecto al robot. Ojo con la convención de tu láser (en tu código, el índice 0 es la derecha y el 90 el frente).
-Recorre puntos a lo largo del rayo desde el robot hasta r, de celda en celda.
-Las celdas antes de r reciben el valor de "vacío".
-La celda en r recibe el valor de "ocupado", pero solo si r es menor que el rango máximo (si el láser no chocó con nada, no hay obstáculo).
-Más allá de r no tocas nada (desconocido).
-Paso 6: Evitar que la creencia se bloquee
+Imprímelos y comprueba que salen ≈ -0.405, +0.405 y 0.
 
-Si una celda se acumula hasta valores enormes, luego no puede cambiar de opinión. Piensa en poner un límite superior e inferior al valor acumulado.
+Paso 4: Mundo → celda
 
-Paso 7: Integrarlo en tu bucle
-Llama a la actualización del mapa dentro del while True, con la pose y el láser.
-No hace falta hacerlo a 50 Hz; puedes hacerlo cada pocas iteraciones.
-Para ver el resultado, convierte de vuelta a probabilidad (la operación inversa del logaritmo) o simplemente pinta según el signo del valor.
-Antes de nada, arregla tu código base
+No puedes usar WebGUI.worldToGrid, porque esa función es del mapa que te da el otro ejercicio, no de tu rejilla. Escribe la tuya:
 
-Tu código actual tiene problemas que impedirán que ejecute: state es variable y función a la vez, defines state = SPIRAL antes de definir SPIRAL, faltan global dentro de la función, faltan import random y las constantes k_rep, d_influence, d_min, mezclas tabs y espacios, y el bucle no llama a la máquina de estados.
+python
+def world_to_cell(x, y):
+    col = int(x / RES) + ORIGIN
+    row = int(y / RES) + ORIGIN
+    return row, col
 
-Por dónde empezar
+Añade una comprobación de límites (0 <= row < N y 0 <= col < N) antes de escribir en grid. Pruébala con (0,0), que debe dar (ORIGIN, ORIGIN), y con (1,0).
 
-Te sugiero: primero el paso 3 (las constantes) y el paso 4 (la conversión). Cuando los tengas, enséñamelos y los revisamos juntos antes de pasar al rayo. ¿Quieres que te dé alguna pista más concreta sobre alguno de los pasos?
+Paso 5: Actualizar con cada rayo
+
+Aquí reutilizas más cosas:
+
+rd(laser, i): ya te da la distancia saturada a 5 m. Si r < 5.0 hay obstáculo; si r >= 5.0 no hay hit.
+El bucle for i in range(180) de repulsion, pero sin el continue de d > d_influence, porque para mapear sí quieres los rayos lejanos.
+La convención de ángulos: en repulsion usas ox = d*sin(ang), oy = -d*cos(ang), es decir, índice 90 = frente, 0 = derecha, 180 = izquierda. Eso equivale a:
+python
+ang_world = pose.yaw + math.radians(i) - math.pi/2
+
+Esqueleto:
+
+python
+def update_map(pose, laser):
+    for i in range(180):
+        r = rd(laser, i)
+        ang = pose.yaw + math.radians(i) - math.pi/2
+        # 1) recorre d = 0, RES, 2*RES ... mientras d < r
+        #    x = pose.x + d*cos(ang); y = pose.y + d*sin(ang)
+        #    celda -> grid[row, col] += L_BLANK
+        # 2) si r < 5.0: celda en (r) -> grid[row, col] += L_TAKEN
+
+Para el paso del recorrido usa RES o RES/2, para no saltarte celdas.
+
+Paso 6: Limitar el valor
+
+Una línea tras cada suma (o con np.clip sobre toda la rejilla cada cierto tiempo):
+
+python
+L_MAX = 5.0
+grid[row, col] = max(-L_MAX, min(L_MAX, grid[row, col]))
+Paso 7: Integrarlo en el bucle
+
+Reutilizas tu ticks o un contador nuevo:
+
+python
+map_counter = 0
+while True:
+    Frequency.tick(IDEAL_RATE)
+    pose = HAL.getPose3d()
+    laser = HAL.getLaserData()
+    if laser is None or len(laser.values) < 180:
+        continue
+
+    update_state(laser)          # tu máquina de estados
+
+    map_counter += 1
+    if map_counter % 5 == 0:     # ~10 Hz
+        update_map(pose, laser)
+
+Para visualizar, convierte a probabilidad con p = 1 - 1/(1 + np.exp(grid)) y pinta en 0-255, o simplemente por signo (grid > 0 ocupado, grid < 0 libre). Mira en la documentación del ejercicio qué función de WebGUI sirve para mostrar una imagen o mapa, porque depende de la versión.
+
+Orden sugerido
+Paso 0 (que el robot se mueva sin errores)
+Pasos 2, 3 y 4, con prints de comprobación
+Paso 5 con un solo rayo (el 90, el frontal) y mira si la rejilla se llena bien delante del robot
+Después todos los rayos, clip y visualización
