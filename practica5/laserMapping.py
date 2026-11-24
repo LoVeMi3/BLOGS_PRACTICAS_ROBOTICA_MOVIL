@@ -20,8 +20,15 @@ HEIGHT = 970
 WIDTH = 1500
 #el (0,0) del mundo cae en el centro de la matriz
 grid = np.zeros((HEIGHT, WIDTH)) #0 = log-odds, de p = 0.5
-L_MAX = 5.0
+grid_visits = np.zeros((HEIGHT, WIDTH)) #cuántas veces se actualiza cada celda
+"""
+si visits[celda] == 0: → DESCONOCIDA
+si no, si grid[celda] < -T_free: → LIBRE
+si no, si grid[celda] >  T_occ:  → OCUPADA
+si no: → DESCONOCIDA (o "dudosa")
+"""
 
+L_MAX = 5.0
 BLANK = 0.4
 L_BLANK = math.log(BLANK/ (1.0 - BLANK)) #log(p / (1.0 - p)
 TAKEN = 0.6
@@ -51,8 +58,9 @@ def repulsion(laser, p_y):
         if d is None or math.isnan(d) or math.isinf(d) or d <= 0.0:
             continue
         d = max(d, d_min)
-        ox = d*sin(ang)
-        oy = -d*cos(ang)
+        ang = math.radians(i)
+        ox = d * math.sin(ang)
+        oy = -d * math.cos(ang)
         #ir ajustando k_rep
         mag = k_rep * (((1.0 / d) - (1.0 / d_influence)) / (d * d))
         rx += mag * (-ox / d)
@@ -81,10 +89,10 @@ def get_line_dir(origin, end):
         og_x, og_y = og_y, og_x #rotandooo
         end_x, end_y = end_y, end_x
 
-    swapped = x1 > x2
+    swapped = og_x > end_x
     if swapped:
         og_x, end_x = end_x, og_x
-        og_y, end_y = end_y2, og_y
+        og_y, end_y = end_y, og_y
     
     #recalculamos
     dx = end_x - og_x
@@ -94,9 +102,9 @@ def get_line_dir(origin, end):
     ystep = 1 if og_y < end_y else -1
     
     #iteramos
-    y = og_y1
+    y = og_y
     points = []
-    for x in range(x1, end_x + 1):
+    for x in range(og_x, end_x + 1):
         coord = (y, x) if steep else (x, y)
         points.append(coord)
         error -= abs(dy)
@@ -110,13 +118,13 @@ def get_line_dir(origin, end):
 #"hasta aquí no hay nada, y justo aquí hay una pared"
 def update_map(pose, laser):
     row, col = world_to_cell(pose.x, pose.y)
-    if row < 0 or row >= HEIGHT and col < 0 or col >= WIDTH:
+    if not (0 <= row < HEIGHT and 0 <= col < WIDTH):
         return -1
     punch = False
     for i in range(len(laser.values)):
         #r = rd(laser, i)
         r = laser.values[i]
-        if not math.isfinite(r) or r is None or r >= 5.0:
+        if r is None or not math.isfinite(r) or r >= 5.0:
             punch = False
             r = 5.0
         else:
@@ -126,19 +134,21 @@ def update_map(pose, laser):
         target_x = pose.x + r * math.cos(ang)
         target_y = pose.y + r * math.sin(ang)
     
-        target_col, target_row = world_to_cell(target_x, target_y)
+        target_row, target_col = world_to_cell(target_x, target_y)
     
-        points = get_line_dir(pose, (target_col, target_row))
+        points = get_line_dir((row, col), (target_col, target_row))
         for py, px in points[:-1]:
-            if py < 0 or py >= HEIGHT and px < 0 or px >= WIDTH:
+            if (0 <= py < HEIGHT and 0 <= px < WIDTH):
                 grid[py, px] = max(-L_MAX, min(L_MAX, grid[py, px] + L_BLANK))
+                grid_visits[py, px] += 1
         
-        end_point = points[-1]
-        if punch and (py < 0 or py >= HEIGHT and px < 0 or px >= WIDTH):
-            grid[end_point] = max(-L_MAX, min(L_MAX, grid[end_point] + L_TAKEN))
+        end_p_x, end_p_y = points[-1] #if swapped, estamos cogiendo al revés
+        if punch and (0 <= end_p_y < HEIGHT and 0 <= end_p_x < WIDTH):
+            grid[end_p_y, end_p_x] = max(-L_MAX, min(L_MAX, grid[end_p_y, end_p_x] + L_TAKEN))
+            grid_visits[end_p_y, end_p_x] += 1
 
 def show_map():
-    img = np.full((H, W), 127, dtype=np.uint8)
+    img = np.full((HEIGHT, WIDTH), 127, dtype=np.uint8)
     img[grid < -0.5] = 255
     img[grid > 0.5] = 0
     WebGUI.setUserMap(img)

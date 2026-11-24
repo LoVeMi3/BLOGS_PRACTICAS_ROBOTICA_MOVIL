@@ -1,4 +1,3 @@
-Lo que falta, en orden
 -Mapa funcionando primero. Implementa update_map y verifica visualmente que el mapa se construye bien mientras mueves el robot de forma trivial (incluso en línea recta). Nada de lo siguiente es fiable sin esto.
 -Clasificar celdas. Convierte log-odds en tres categorías: desconocida (cerca de 0 / nunca actualizada), libre, ocupada. Necesitarás distinguir "nunca vista" de "vista y dudosa", así que quizá una rejilla auxiliar de visitas.
 -Detectar fronteras: celdas libres que tienen al menos un vecino desconocido. Son los puntos donde hay información nueva que ganar.
@@ -7,3 +6,15 @@ Lo que falta, en orden
 -Seguir la ruta con waypoints (make_cells_wp) y un controlador simple: girar hacia el waypoint y avanzar, con la repulsión como seguridad local.
 -Replanificar periódicamente o cuando el objetivo deje de ser frontera, o la ruta quede bloqueada.
 -Condición de parada: cuando no queden fronteras alcanzables, la exploración ha terminado. Esto responde directamente al cuarto punto del enunciado.
+
+-------------------------------------------------------------------------------
+
+Cómo organizarlo
+
+Una función classify() que devuelva una matriz del mismo tamaño que grid con valores 0, 1 y 2 (desconocida, libre, ocupada). Con numpy se hace con máscaras booleanas, sin bucles:
+
+clase = todo a DESCONOCIDA
+clase[(visits > 0) y (grid < -T_free)] = LIBRE
+clase[(visits > 0) y (grid >  T_occ)]  = OCUPADA
+
+No hace falta recalcularla en cada tick. Con hacerlo cuando vayas a buscar fronteras o replanificar (unos pocos Hz) es suficiente, porque en una rejilla de 970×1500 no es barato hacerlo a 50 Hz.
