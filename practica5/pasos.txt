@@ -1,20 +1,235 @@
--Mapa funcionando primero. Implementa update_map y verifica visualmente que el mapa se construye bien mientras mueves el robot de forma trivial (incluso en línea recta). Nada de lo siguiente es fiable sin esto.
--Clasificar celdas. Convierte log-odds en tres categorías: desconocida (cerca de 0 / nunca actualizada), libre, ocupada. Necesitarás distinguir "nunca vista" de "vista y dudosa", así que quizá una rejilla auxiliar de visitas.
--Detectar fronteras: celdas libres que tienen al menos un vecino desconocido. Son los puntos donde hay información nueva que ganar.
--Elegir objetivo: normalmente la frontera más cercana (o agrupar fronteras en clusters y elegir el mejor por tamaño/distancia).
--Planificar con BFS sobre el mapa, tratando como no transitables las celdas ocupadas inflándolas por el radio del robot. Sin inflado, el camino rozará paredes. Esto enlaza con tu comentario "me atraviesa las paredes".
--Seguir la ruta con waypoints (make_cells_wp) y un controlador simple: girar hacia el waypoint y avanzar, con la repulsión como seguridad local.
--Replanificar periódicamente o cuando el objetivo deje de ser frontera, o la ruta quede bloqueada.
--Condición de parada: cuando no queden fronteras alcanzables, la exploración ha terminado. Esto responde directamente al cuarto punto del enunciado.
+Paso 5 (antes del 4): inflado y BFS
 
--------------------------------------------------------------------------------
+Conviene hacer primero el BFS, porque te da a la vez el camino y la distancia a todas las fronteras.
 
-Cómo organizarlo
+Inflado: crea un mapa de transitabilidad. Las celdas ocupadas se "engordan" un radio igual al del robot más un margen (en celdas: radio_robot / resolución real). La forma más sencilla es dilatar la máscara de ocupadas (con un elemento circular), o con SciPy si está disponible. Las celdas desconocidas también se consideran no transitables: planificas solo por zona libre conocida.
 
-Una función classify() que devuelva una matriz del mismo tamaño que grid con valores 0, 1 y 2 (desconocida, libre, ocupada). Con numpy se hace con máscaras booleanas, sin bucles:
+Dos detalles que suelen dar problemas:
 
-clase = todo a DESCONOCIDA
-clase[(visits > 0) y (grid < -T_free)] = LIBRE
-clase[(visits > 0) y (grid >  T_occ)]  = OCUPADA
+Si el robot ya está dentro de la zona inflada (cerca de una pared), el BFS no puede ni empezar. Limpia un pequeño círculo de celdas alrededor de la posición actual antes de planificar.
+Que las celdas de frontera caigan dentro del inflado es normal. Si una frontera queda inalcanzable por eso, simplemente no se elige.
 
-No hace falta recalcularla en cada tick. Con hacerlo cuando vayas a buscar fronteras o replanificar (unos pocos Hz) es suficiente, porque en una rejilla de 970×1500 no es barato hacerlo a 50 Hz.
+Un solo BFS desde el robot:
+
+dist = matriz de -1 (no visitada); padre = matriz vacía
+cola = [celda_robot]; dist[celda_robot] = 0
+mientras cola no vacía:
+    c = sacar de cola (usar deque, NO list.pop(0))
+    para cada vecino v de c (8-conectado):
+        si v transitable y dist[v] == -1:
+            dist[v] = dist[c] + 1
+            padre[v] = c
+            meter v en cola
+
+Con 8-conectividad los caminos son más naturales. Con 4 salen escaleras, y tu make_cells_wp pondría un waypoint en cada peldaño.
+
+Rendimiento: en Python puro, un BFS sobre 1,45 M celdas puede tardar segundos. Tres mitigaciones, de más a menos importante:
+
+Recorta a la caja delimitadora de las celdas visitadas (mínimas y máximas fila/columna con visits > 0). Al principio el área explorada es minúscula.
+Planifica en una versión reducida del mapa (por ejemplo bloques de 2×2 o 4×4 celdas, donde un bloque es ocupado si cualquiera de sus celdas lo es).
+Ejecuta el planificador solo cada 1-2 s o ante eventos concretos (paso 7), nunca en cada tick.
+Paso 4: elegir objetivo
+
+Con el BFS hecho es sencillo:
+
+candidatas = clusters de frontera con tamaño >= MIN_TAM
+para cada cluster:
+    elegir la celda del cluster con menor dist[] (que no sea -1)
+    si ninguna celda del cluster es alcanzable: descartar cluster
+objetivo = cluster con menor dist (o puntuar por tamaño/distancia)
+
+Fíjate en que no uses el centroide del cluster: puede caer en una celda ocupada o desconocida. Usa siempre una celda real del cluster que el BFS haya alcanzado.
+
+Para evitar oscilaciones entre dos fronteras de distancia parecida, añade histéresis: solo cambias de objetivo si el nuevo es claramente mejor (por ejemplo, 20-30 % más cerca) o si el actual deja de ser válido. Mantén una lista negra de objetivos que fallaron (bloqueados o en los que te atascaste).
+
+Paso 6: seguir la ruta
+
+Recuperas el camino siguiendo padre desde el objetivo hasta el robot y lo invertes. Luego aplicas tu make_cells_wp, que tiene buena pinta (corta en esquinas y cada step celdas). Ojo a dos cosas:
+
+Si el camino tiene menos de 2 puntos, tu función falla o duplica el punto.
+Para suavizar aún más, puedes quitar waypoints intermedios si hay línea recta libre entre dos más lejanos (reutilizando tu Bresenham sobre el mapa inflado).
+
+Los waypoints están en celdas, así que hay que convertirlos a coordenadas del mundo. Mira si WebGUI ofrece la conversión inversa a poseToMap; si no, invierte tú la transformación y compruébala con un punto conocido.
+
+El controlador es una pequeña máquina de estados para cada waypoint:
+
+error_ang = ángulo_hacia_waypoint − yaw   (normalizado a [-π, π])
+
+si |error_ang| > UMBRAL_GRANDE (~0.5 rad):
+    v = 0;  w = Kp * error_ang          # girar en el sitio
+si no:
+    v = V_STRAIGHT reducida según |error_ang|
+    w = Kp * error_ang                  # avanzar corrigiendo rumbo
+
+si distancia al waypoint < TOLERANCIA (~0.3 m):
+    pasar al siguiente waypoint
+
+Usa V_TURN para tramos con giro y V_STRAIGHT para rectas.
+
+La repulsión como seguridad local, no como guía principal:
+
+Si el obstáculo frontal está por debajo de un umbral crítico, para (v = 0) y deja que el replanificador actúe.
+Si no, suma a w una pequeña corrección proporcional a la componente lateral del vector repulsivo.
+Cuida el sistema de referencia: la repulsión sale en ejes del robot, así que si la combinas con el vector hacia el waypoint, pasa ese vector también al marco del robot (restando el yaw).
+Paso 7: replanificar
+
+Replanifica solo ante estos eventos (más un temporizador de 2-3 s como red de seguridad):
+
+Llegaste al objetivo.
+El objetivo ya no es frontera (se ha explorado desde otro lado). Compruébalo mirando que su celda siga siendo libre con vecino desconocido.
+La ruta se ha bloqueado: alguna celda de los próximos waypoints pasó a ocupada o inflada.
+Atasco: no avanzas más de cierta distancia en N segundos. En ese caso mete el objetivo en la lista negra.
+Paso 8: parada
+
+Cuando, tras replanificar, no queda ningún cluster de frontera alcanzable (todos filtrados, bloqueados o en lista negra), la exploración ha terminado: v = 0, w = 0 y muestra el mapa final. Para evitar paradas prematuras por un fallo puntual del planificador, exige que ocurra en 2-3 replanificaciones consecutivas.
+
+#######################################################################################################
+-------------------------------------------------------------------------------------------------------
+#######################################################################################################
+
+# ---------- estado ----------
+SEED, EXPLORING, FIN = 0, 1, 2
+state = SEED
+seed_rot = 0.0
+last_yaw = None
+
+waypoints = []
+wp_idx = 0
+target = None
+blacklist = []
+need_replan = True
+last_plan_t = 0.0
+no_target = 0
+
+stuck_ref = None
+stuck_t = 0.0
+tick = 0
+
+# ---------- bucle ----------
+while True:
+    Frequency.tick(IDEAL_RATE)
+
+    pose = HAL.getPose3d()
+    laser = HAL.getLaserData()
+    if laser is None or len(laser.values) < NUM_LASER_VALUES:
+        continue
+    now = time.time()
+
+    if tick % 5 == 0:        # ~10 Hz
+        update_map(pose, laser)
+    if tick % 50 == 0:       # ~1 Hz
+        show_map()
+    tick += 1
+
+    # ----- SEED: girar 360° -----
+    if state == SEED:
+        if last_yaw is None:
+            last_yaw = pose.yaw
+        seed_rot += abs(norm_angle(pose.yaw - last_yaw))
+        last_yaw = pose.yaw
+        HAL.setV(0.0)
+        HAL.setW(SEED_W)
+        if seed_rot >= 2 * math.pi:
+            state = EXPLORING
+            need_replan = True
+        continue
+
+    # ----- FIN -----
+    if state == FIN:
+        HAL.setV(0.0)
+        HAL.setW(0.0)
+        continue
+
+    # ----- EXPLORING -----
+    if not need_replan and now - last_plan_t > REPLAN_PERIOD:
+        need_replan = True
+
+    if need_replan:
+        HAL.setV(0.0)
+        HAL.setW(0.0)
+        update_map(pose, laser)
+        result = plan(pose, blacklist)
+        last_plan_t = time.time()
+        need_replan = False
+
+        if result is None:
+            no_target += 1
+            waypoints = []
+            target = None
+            if no_target >= 3:
+                state = FIN
+                show_map()
+                continue
+            last_plan_t = last_plan_t - REPLAN_PERIOD + 1.5   # reintento en 1.5 s
+        else:
+            wps, tgt = result
+            if len(wps) < 2:              # ya estamos en la frontera
+                blacklist.append(tgt)
+                need_replan = True
+                continue
+            no_target = 0
+            waypoints = wps
+            target = tgt
+            wp_idx = 1
+            stuck_ref = (pose.x, pose.y)
+            stuck_t = last_plan_t
+
+    # sin ruta: girar despacio mientras se reintenta
+    if not waypoints:
+        HAL.setV(0.0)
+        HAL.setW(0.5)
+        continue
+
+    # waypoint alcanzado
+    wx, wy = waypoints[wp_idx]
+    dist = math.hypot(wx - pose.x, wy - pose.y)
+    if dist < WP_TOL:
+        wp_idx += 1
+        if wp_idx >= len(waypoints):      # objetivo alcanzado
+            blacklist.append(target)
+            waypoints = []
+            need_replan = True
+            HAL.setV(0.0)
+            HAL.setW(0.0)
+            continue
+        wx, wy = waypoints[wp_idx]
+
+    # atasco
+    if now - stuck_t > STUCK_TIME:
+        moved = math.hypot(pose.x - stuck_ref[0], pose.y - stuck_ref[1])
+        if moved < STUCK_DIST:
+            blacklist.append(target)
+            waypoints = []
+            need_replan = True
+            continue
+        stuck_ref = (pose.x, pose.y)
+        stuck_t = now
+
+    # controlador
+    err = norm_angle(math.atan2(wy - pose.y, wx - pose.x) - pose.yaw)
+    front = sector_min(laser, 70, 110)
+    _, ry = repulsion(laser)
+
+    if front < FRONT_STOP:                # seguridad local
+        left = sector_min(laser, 120, 170)
+        right = sector_min(laser, 10, 60)
+        v = 0.0
+        w = 0.8 if left >= right else -0.8
+        if now - last_plan_t > 1.5:
+            need_replan = True
+    elif abs(err) > ANG_BIG:              # girar en el sitio
+        v = 0.0
+        w = KP_W * err
+    else:                                 # avanzar corrigiendo rumbo
+        v = V_STRAIGHT if abs(err) < 0.15 else V_TURN
+        v *= max(0.0, 1.0 - abs(err) / ANG_BIG)
+        if front < 0.8:
+            v *= front / 0.8
+        v = max(v, 0.2 * V_TURN)
+        w = KP_W * err + K_LAT * ry
+
+    w = max(-W_MAX, min(W_MAX, w))
+    HAL.setV(v)
+    HAL.setW(w)
+
+Lo que debes tener definido antes del bucle es plan, repulsion, sector_min, norm_angle, update_map, show_map y las constantes SEED_W, REPLAN_PERIOD, WP_TOL, FRONT_STOP, STUCK_TIME, STUCK_DIST, KP_W, K_LAT, ANG_BIG, W_MAX. Si quieres, te paso solo plan o solo las constantes en otro mensaje.

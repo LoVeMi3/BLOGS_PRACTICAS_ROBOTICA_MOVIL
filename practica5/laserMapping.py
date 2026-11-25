@@ -12,29 +12,30 @@ V_STRAIGHT = 10 # velocidad lineal máxima
 V_TURN = 6
 
 k_rep = 0.5
-d_influence = 2.3
+d_influence = 0.85
 d_min = 0.05
 
-RES = 0.1 #metros por celda
+#y es row, x es col
+#y es HEIGHT, x es WIDTH
+
 HEIGHT = 970
 WIDTH = 1500
 #el (0,0) del mundo cae en el centro de la matriz
 grid = np.zeros((HEIGHT, WIDTH)) #0 = log-odds, de p = 0.5
 grid_visits = np.zeros((HEIGHT, WIDTH)) #cuántas veces se actualiza cada celda
-"""
-si visits[celda] == 0: → DESCONOCIDA
-si no, si grid[celda] < -T_free: → LIBRE
-si no, si grid[celda] >  T_occ:  → OCUPADA
-si no: → DESCONOCIDA (o "dudosa")
-"""
 
 L_MAX = 5.0
 BLANK = 0.4
 L_BLANK = math.log(BLANK/ (1.0 - BLANK)) #log(p / (1.0 - p)
-TAKEN = 0.6
+TAKEN = 0.7
 L_TAKEN = math.log(TAKEN/ (1.0 - TAKEN))
 SUS = 0.5 #prior
 
+T_FREE = 0.8 #log-odds: ~2 observaciones de libre
+T_OCC = 0.8 #log-odds: ~1 observación de ocupado (L_TAKEN ≈ 0.85)
+FREE, UNKNOWN, OCCUPIED = -1, 0, 1
+
+STATE = EXPLORING
 NUM_LASER_VALUES = 360
 
 #logaritmo de ratio de probabilidad - regla de bayes
@@ -50,12 +51,19 @@ def world_to_cell(x, y):
     mx, my, non_yaw = WebGUI.poseToMap(x, y, 0)
     return int(round(my)), int(round(mx)) #fila, columna
 
-def repulsion(laser, p_y):
+def classify(grid, grid_visits):
+    matrix = np.full((HEIGHT, WIDTH), UNKNOWN, dtype=np.int8)
+    visited = grid_visits > 0
+    matrix[visited & (grid < -T_FREE)] = FREE
+    matrix[visited & (grid > T_OCC)] = OCCUPIED
+    return matrix
+
+def repulsion(laser):
     rx = 0
     ry = 0
     #Distancia válida del láser (inf si es 0, NaN o inf).
     for i, d in enumerate(laser.values[:NUM_LASER_VALUES]):
-        if d is None or math.isnan(d) or math.isinf(d) or d <= 0.0:
+        if d is None or math.isnan(d) or math.isinf(d) or d <= 0.0 or d >= d_influence:
             continue
         d = max(d, d_min)
         ang = math.radians(i)
@@ -71,47 +79,42 @@ def repulsion(laser, p_y):
 def update_state(pose, laser):
     #vector repulsión
     row, col = world_to_cell(pose.x, pose.y)
-    if row < 0 or row >= HEIGHT and col < 0 or col >= WIDTH:
+    if (row < 0 or row >= HEIGHT) and (col < 0 or col >= WIDTH):
         return -1
-    rep_x, rep_y = repulsion(laser, pose.yaw)
+    rep_x, rep_y = repulsion(laser)
 
 #teorema de bresenham para calcular las celdas libres que hay entre
 # el punto que estamos y al que nos dirigimos
 def get_line_dir(origin, end):
-    og_x, og_y = origin
-    end_x, end_y = end
-    dx = end_x - og_x
-    dy = end_y - og_y
-    
-    #pendiente de la línea a seguir
-    steep = abs(dy) > abs(dx)
-    if steep:
-        og_x, og_y = og_y, og_x #rotandooo
-        end_x, end_y = end_y, end_x
+    x0, y0 = origin #col, fila
+    x1, y1 = end
 
-    swapped = og_x > end_x
+    steep = abs(y1 - y0) > abs(x1 - x0)
+    if steep:
+        x0, y0 = y0, x0
+        x1, y1 = y1, x1
+
+    swapped = x0 > x1
     if swapped:
-        og_x, end_x = end_x, og_x
-        og_y, end_y = end_y, og_y
-    
-    #recalculamos
-    dx = end_x - og_x
-    dy = abs(end_y - og_y)
-    
-    error = int(dx / 2.0)
-    ystep = 1 if og_y < end_y else -1
-    
-    #iteramos
-    y = og_y
+        x0, x1 = x1, x0
+        y0, y1 = y1, y0
+
+    dx = x1 - x0
+    dy = abs(y1 - y0)
+    error = dx // 2
+    ystep = 1 if y0 < y1 else -1
+
+    y = y0
     points = []
-    for x in range(og_x, end_x + 1):
-        coord = (y, x) if steep else (x, y)
-        points.append(coord)
-        error -= abs(dy)
+    for x in range(x0, x1 + 1):
+        points.append((y, x) if steep else (x, y))
+        error -= dy
         if error < 0:
             y += ystep
             error += dx
-    
+
+    if swapped:
+        points.reverse()
     return points
 
 #cada haz del láser es una linterna que dice 
@@ -136,8 +139,8 @@ def update_map(pose, laser):
     
         target_row, target_col = world_to_cell(target_x, target_y)
     
-        points = get_line_dir((row, col), (target_col, target_row))
-        for py, px in points[:-1]:
+        points = get_line_dir((col, row), (target_col, target_row))
+        for px, py in points[:-1]:
             if (0 <= py < HEIGHT and 0 <= px < WIDTH):
                 grid[py, px] = max(-L_MAX, min(L_MAX, grid[py, px] + L_BLANK))
                 grid_visits[py, px] += 1
@@ -180,9 +183,14 @@ while True:
     HAL.setV(0.0)
     HAL.setW(0.3) #probando mapa
 
-    if map_counter % 5 == 0:# ~10 Hz
+    if map_counter % 5 == 0: #~10 Hz
         update_map(pose, laser)
+    elif map_counter % 1 == 0: #1 segundo
         show_map()
+
+    if STATE == EXPLORING:
+        #si hay que replanificar (evento o timer)
+            matrix = classify(grid, grid_visits)
     
     map_counter += 1
 
