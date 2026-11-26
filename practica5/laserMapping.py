@@ -35,7 +35,6 @@ T_FREE = 0.8 #log-odds: ~2 observaciones de libre
 T_OCC = 0.8 #log-odds: ~1 observación de ocupado (L_TAKEN ≈ 0.85)
 FREE, UNKNOWN, OCCUPIED = -1, 0, 1
 
-STATE = EXPLORING
 NUM_LASER_VALUES = 360
 
 #logaritmo de ratio de probabilidad - regla de bayes
@@ -50,6 +49,106 @@ NUM_LASER_VALUES = 360
 def world_to_cell(x, y):
     mx, my, non_yaw = WebGUI.poseToMap(x, y, 0)
     return int(round(my)), int(round(mx)) #fila, columna
+
+def cell_to_world(row, col):
+    mx, my = WebGUI.mapToPose(col, row, 0))
+    return int(round(my)), int(round(mx))
+
+def norm_angle(a):
+    return atan2(sin(a), cos(a))
+
+def sector_min(laser, i0, i1):
+    #mínimo de las lecturas válidas entre los índices i0..i1
+    vals = [d for d in laser.values[i0:i1+1] if math.isinf(d) and d > 0]
+    if vals:
+        return min(vals)
+    else:
+        return 5.0
+
+#marcar como no transitable toda celda a menos que el radio del robot de una celda OCCUPIED
+#engordamos la velda ocupada
+def inflate(mask, r):
+    out = mask.copy()
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            if dx * dx + dy * dy <= r * r: #disco de radio r
+                out |= np.roll(np.roll(mask, dy, axis=0), dx, axis=1)
+    return out
+
+def is_frontier(cell, matrix):
+    if cell == FREE:
+        x, y = cell
+        near_x = [R_ROBOT, -R_ROBOT, 0, -R_ROBOT, 0, R_ROBOT]
+        near_y = [R_ROBOT, -R_ROBOT, R_ROBOT, 0, -R_ROBOT, 0]
+        count = 0
+        for i in range(len(near_x)):
+            x = start_x + near_x[i]
+            y = start_y + near_y[i]
+            if matrix[y][x] == UNKNOWN:
+                count += 1
+        if count > 0: #encontrar algún vecino UNKNOWN
+            return True
+    else:
+        return False
+
+def in_blacklist(cell, blacklist):
+    cx, cy = cell
+    for bx, by in blacklist:
+        if cx == bx and cy == by:
+            return True
+    return False
+
+def plan(pose, blacklist):
+    matrix = classify(grid, grid_visits)
+    occupied = (matrix == OCCUPIED)
+    inflated = inflate(occupied, R_ROBOT) #radio del robot, cómo se saca?
+    transitable = (matrix == FREE) & ~inflated
+
+    start_x, start, y = world_to_cell(pose.x, pose.y)
+    if not transitable[start]:
+        near_x = [R_ROBOT, -R_ROBOT, 0, -R_ROBOT, 0, R_ROBOT]
+        near_y = [R_ROBOT, -R_ROBOT, R_ROBOT, 0, -R_ROBOT, 0]
+        for i in range(len(near_x)):
+            x = start_x + near_x[i]
+            y = start_y + near_y[i]
+            if transitable[(x, y)]:
+                non_start = False
+                start = (x, y)
+            else:
+                non_start = True
+                continue
+        if non_start:
+            return None
+    
+    lista = [start]
+    inicio = {start: None}
+    while lista:
+        cell = lista.pop_front()
+        if is_frontier(cell, matrix) and not in_blacklist(cell, blacklist):
+            target = cell
+            break
+        for cada vecino n de cell (8 direcciones):
+            if grid[n] is not None and transitable[n] is not None and n not in inicio:
+                inicio[n] = cell
+                lista.push_back(n)
+    
+    if target is None:
+        return None
+
+    path = []
+    c = target
+    while c is not None:
+        path.append(c)
+        c = lista[c]
+    path.reverse()
+
+    cells_wp = make_cells_wp(path, 10)
+
+    waypoints = [cell_to_world(r, c) for (r, co) in cells_wp]
+    tgt = cell_to_world(target)
+    return (waypoints, tgt)
+
+
 
 def classify(grid, grid_visits):
     matrix = np.full((HEIGHT, WIDTH), UNKNOWN, dtype=np.int8)
@@ -75,13 +174,6 @@ def repulsion(laser):
         ry += mag * (-oy / d)
     
     return rx / NUM_LASER_VALUES, ry / NUM_LASER_VALUES
-
-def update_state(pose, laser):
-    #vector repulsión
-    row, col = world_to_cell(pose.x, pose.y)
-    if (row < 0 or row >= HEIGHT) and (col < 0 or col >= WIDTH):
-        return -1
-    rep_x, rep_y = repulsion(laser)
 
 #teorema de bresenham para calcular las celdas libres que hay entre
 # el punto que estamos y al que nos dirigimos
@@ -171,7 +263,24 @@ def make_cells_wp(path, step):
     waypoints.append(path[-1])
     return waypoints
 
-map_counter = 0
+# ---------- estado ----------
+SEED, EXPLORING, FIN = 0, 1, 2
+state = SEED
+seed_rot = 0.0
+last_yaw = None
+
+waypoints = []
+wp_idx = 0
+target = None
+blacklist = []
+need_replan = True
+last_plan_t = 0.0
+no_target = 0
+
+stuck_ref = None
+stuck_t = 0.0
+tick = 0
+
 while True:
     Frequency.tick(IDEAL_RATE)
 
@@ -179,18 +288,119 @@ while True:
     laser = HAL.getLaserData()
     if laser is None or len(laser.values) < NUM_LASER_VALUES:
         continue
+    now = time.time()
     
-    HAL.setV(0.0)
-    HAL.setW(0.3) #probando mapa
-
-    if map_counter % 5 == 0: #~10 Hz
+    if tick % 5 == 0: #~10 Hz
         update_map(pose, laser)
-    elif map_counter % 1 == 0: #1 segundo
+    elif tick % 1 == 0: #1 segundo
         show_map()
+    tick += 1
 
-    if STATE == EXPLORING:
-        #si hay que replanificar (evento o timer)
-            matrix = classify(grid, grid_visits)
+    #girar 360 grados para limpiar la zona de origen
+    if state == SEED:
+        if last_yaw is None:
+            last_yaw = pose.yaw
+        seed_rot += abs(norm_angle(pose.yaw - last_yaw))
+        last_yaw = pose.yaw
+        HAL.setV(0.0)
+        HAL.setW(SEED_W)
+        if seed_rot >= 2 * math.pi:
+            state = EXPLORING
+            need_replan = True
+        continue
+    if state == FIN:
+        HAL.setV(0.0)
+        HAL.setW(0.0)
+        continue
+    #state == EXPLORING
+    if not need_replan and now - last_plan_t > REPLAN_PERIOD:
+        need_replan = True
     
-    map_counter += 1
+    if need_replan:
+        HAL.setV(0.0)
+        HAL.setW(0.0)
+        update_map(pose, laser)
+        result = plan(pose, blacklist)
+        last_plan_t = time.time()
+        need_replan = False
+
+        if result is None:
+            no_target += 1
+            waypoints = []
+            target = None
+            if no_target >= 3:
+                state = FIN
+                show_map()
+                continue
+            last_plan_t = last_plan_t - REPLAN_PERIOD + 1.5 #reintento en 1.5 s
+        else:
+            wps, tgt = result #waypoints, target
+            if len(wps) < 2: #ya estamos en la frontera
+                blacklist.append(tgt)
+                need_replan = True
+                continue
+            no_target = 0
+            waypoints = wps
+            target = tgt
+            wp_idx = 1
+            stuck_ref = (pose.x, pose.y)
+            stuck_t = last_plan_t
+    
+    #sin ruta: girar despacio mientras se reintenta
+    if not waypoints:
+        HAL.setV(0.0)
+        HAL.setW(0.5)
+        continue
+    
+    #waypoint alcanzado
+    wx, wy = waypoints[wp_idx]
+    dist = math.hypot(wx - pose.x, wy - pose.y)
+    if dist < WP_TOL:
+        wp_idx += 1
+        if wp_idx >= len(waypoints): #objetivo alcanzado
+            blacklist.append(target)
+            waypoints = []
+            need_replan = True
+            HAL.setV(0.0)
+            HAL.setW(0.0)
+            continue
+        wx, wy = waypoints[wp_idx]
+    
+    # atasco
+    if now - stuck_t > STUCK_TIME:
+        moved = math.hypot(pose.x - stuck_ref[0], pose.y - stuck_ref[1])
+        if moved < STUCK_DIST:
+            blacklist.append(target)
+            waypoints = []
+            need_replan = True
+            continue
+        stuck_ref = (pose.x, pose.y)
+        stuck_t = now
+
+    # controlador
+    err = norm_angle(math.atan2(wy - pose.y, wx - pose.x) - pose.yaw)
+    front = sector_min(laser, 70, 110)
+    rx, ry = repulsion(laser)
+
+    if front < FRONT_STOP: #seguridad local
+        left = sector_min(laser, 120, 170)
+        right = sector_min(laser, 10, 60)
+        v = 0.0
+        w = 0.8 if left >= right else -0.8
+        if now - last_plan_t > 1.5:
+            need_replan = True
+    elif abs(err) > ANG_BIG: #girar en el sitio
+        v = 0.0
+        w = KP_W * err
+    else: #avanzar corrigiendo rumbo
+        v = V_STRAIGHT if abs(err) < 0.15 else V_TURN
+        v *= max(0.0, 1.0 - abs(err) / ANG_BIG)
+        if front < 0.8:
+            v *= front / 0.8
+        v = max(v, 0.2 * V_TURN)
+        w = KP_W * err + K_LAT * ry
+
+    w = max(-W_MAX, min(W_MAX, w))
+    HAL.setV(v)
+    HAL.setW(w)
 
