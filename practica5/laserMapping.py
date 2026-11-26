@@ -5,6 +5,8 @@ import Frequency
 import math
 import random
 import numpy as np
+import time
+from collections import deque
 
 IDEAL_RATE = 50
 
@@ -15,9 +17,23 @@ k_rep = 0.5
 d_influence = 0.85
 d_min = 0.05
 
+SEED_W = 0.8 #rad/s, giro inicial de 360º
+REPLAN_PERIOD = 5.0 #s, cada cuánto replanificas aunque no haga falta
+WP_TOL = 0.3 #m, distancia a la que das un waypoint por alcanzado
+STUCK_TIME = 4.0 #s, ventana para detectar atasco
+STUCK_DIST = 0.15 #m, si en STUCK_TIME te moviste menos, estás atascado
+FRONT_STOP = 0.35 #m, distancia frontal de parada
+ANG_BIG = 0.8 #rad, si el error de rumbo es mayor, giras en el sitio
+
+ROBOT_RADIUS = 0.3 #m, radio del robot + algo de margen
+r0, c0 = world_to_cell(0.0, 0.0)
+r1, c1 = world_to_cell(1.0, 0.0)
+CELLS_PER_M = math.hypot(r1 - r0, c1 - c0)
+R_ROBOT = max(1, math.ceil(ROBOT_RADIUS_M * CELLS_PER_M)
+BLACK_R = 0.5 #m
+
 #y es row, x es col
 #y es HEIGHT, x es WIDTH
-
 HEIGHT = 970
 WIDTH = 1500
 #el (0,0) del mundo cae en el centro de la matriz
@@ -51,19 +67,16 @@ def world_to_cell(x, y):
     return int(round(my)), int(round(mx)) #fila, columna
 
 def cell_to_world(row, col):
-    mx, my = WebGUI.mapToPose(col, row, 0))
-    return int(round(my)), int(round(mx))
+    mx, my = WebGUI.mapToPose(col, row, 0)
+    return my, mx
 
 def norm_angle(a):
-    return atan2(sin(a), cos(a))
+    return math.atan2(math.sin(a), math.cos(a))
 
 def sector_min(laser, i0, i1):
     #mínimo de las lecturas válidas entre los índices i0..i1
-    vals = [d for d in laser.values[i0:i1+1] if math.isinf(d) and d > 0]
-    if vals:
-        return min(vals)
-    else:
-        return 5.0
+    vals = [d for d in laser.values[i0:i1 + 1] if d is not None and math.isfinite(d) and d > 0]
+    return min(vals) if vals else 5.0
 
 #marcar como no transitable toda celda a menos que el radio del robot de una celda OCCUPIED
 #engordamos la velda ocupada
@@ -76,25 +89,30 @@ def inflate(mask, r):
     return out
 
 def is_frontier(cell, matrix):
-    if cell == FREE:
-        x, y = cell
-        near_x = [R_ROBOT, -R_ROBOT, 0, -R_ROBOT, 0, R_ROBOT]
-        near_y = [R_ROBOT, -R_ROBOT, R_ROBOT, 0, -R_ROBOT, 0]
-        count = 0
-        for i in range(len(near_x)):
-            x = start_x + near_x[i]
-            y = start_y + near_y[i]
-            if matrix[y][x] == UNKNOWN:
-                count += 1
-        if count > 0: #encontrar algún vecino UNKNOWN
-            return True
-    else:
+    r, c = cell
+    if matrix[r, c] != FREE:
         return False
+    for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < HEIGHT and 0 <= nc < WIDTH and matrix[nr, nc] == UNKNOWN:
+            return True #encontrar algún vecino unknown
+    return False
+
+def nearest_free(transitable, start, max_r=15):
+    r0, c0 = start
+    best, best_d = None, 1e9
+    for r in range(max(0, r0 - max_r), min(HEIGHT, r0 + max_r + 1)):
+        for c in range(max(0, c0 - max_r), min(WIDTH, c0 + max_r + 1)):
+            if transitable[r, c]:
+                d = (r - r0) ** 2 + (c - c0) ** 2
+                if d < best_d:
+                    best, best_d = (r, c), d
+    return best
 
 def in_blacklist(cell, blacklist):
-    cx, cy = cell
+    wx, wy = cell_to_world(cell[0], cell[1])
     for bx, by in blacklist:
-        if cx == bx and cy == by:
+        if math.hypot(wx - bx, wy - by) < BLACKLIST_RADIUS:
             return True
     return False
 
@@ -104,33 +122,24 @@ def plan(pose, blacklist):
     inflated = inflate(occupied, R_ROBOT) #radio del robot, cómo se saca?
     transitable = (matrix == FREE) & ~inflated
 
-    start_x, start, y = world_to_cell(pose.x, pose.y)
+    start = world_to_cell(pose.x, pose.y)
     if not transitable[start]:
-        near_x = [R_ROBOT, -R_ROBOT, 0, -R_ROBOT, 0, R_ROBOT]
-        near_y = [R_ROBOT, -R_ROBOT, R_ROBOT, 0, -R_ROBOT, 0]
-        for i in range(len(near_x)):
-            x = start_x + near_x[i]
-            y = start_y + near_y[i]
-            if transitable[(x, y)]:
-                non_start = False
-                start = (x, y)
-            else:
-                non_start = True
-                continue
-        if non_start:
+        start = nearest_free(transitable, start)
+        if start is None:
             return None
     
     lista = [start]
     inicio = {start: None}
+    target = (0, 0)
     while lista:
-        cell = lista.pop_front()
+        cell = lista.pop()
         if is_frontier(cell, matrix) and not in_blacklist(cell, blacklist):
             target = cell
             break
         for cada vecino n de cell (8 direcciones):
             if grid[n] is not None and transitable[n] is not None and n not in inicio:
                 inicio[n] = cell
-                lista.push_back(n)
+                lista.add(n)
     
     if target is None:
         return None
@@ -144,7 +153,7 @@ def plan(pose, blacklist):
 
     cells_wp = make_cells_wp(path, 10)
 
-    waypoints = [cell_to_world(r, c) for (r, co) in cells_wp]
+    waypoints = [cell_to_world(r, co) for (r, co) in cells_wp]
     tgt = cell_to_world(target)
     return (waypoints, tgt)
 
@@ -292,7 +301,7 @@ while True:
     
     if tick % 5 == 0: #~10 Hz
         update_map(pose, laser)
-    elif tick % 1 == 0: #1 segundo
+    elif tick % 50 == 0: #1 segundo
         show_map()
     tick += 1
 
